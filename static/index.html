@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HKBU GenAI Gateway</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #172033; background: #f4f7fb; }
+    main { max-width: 720px; margin: 7vh auto; padding: 32px; background: white; border-radius: 18px; box-shadow: 0 12px 40px #17203318; }
+    h1 { margin-top: 0; } label { display: block; margin: 20px 0 8px; font-weight: 650; }
+    input { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; }
+    button { margin-top: 20px; padding: 12px 18px; border: 0; border-radius: 8px; color: white; background: #2563eb; cursor: pointer; }
+    pre { white-space: pre-wrap; padding: 16px; border-radius: 8px; background: #eef2ff; overflow-wrap: anywhere; }
+    .muted { color: #64748b; } .hidden { display: none; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>HKBU GenAI Gateway</h1>
+  <p class="muted">Enter your HKBU GenAI Platform key to receive an OpenAI-compatible key.</p>
+  <form id="form">
+    <label for="hkbu-key">HKBU GenAI Platform key</label>
+    <input id="hkbu-key" type="password" autocomplete="off" required>
+    <button type="submit">Validate and create gateway key</button>
+  </form>
+  <section id="result" class="hidden">
+    <h2>Your OpenAI-compatible configuration</h2>
+    <p>Save this key now. It will not be displayed again.</p>
+    <pre id="output"></pre>
+  </section>
+  <p id="error" role="alert"></p>
+</main>
+<script>
+  const form = document.querySelector("#form");
+  const result = document.querySelector("#result");
+  const output = document.querySelector("#output");
+  const error = document.querySelector("#error");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault(); error.textContent = "";
+    const response = await fetch("/api/credentials", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({hkbu_api_key: document.querySelector("#hkbu-key").value})
+    });
+    const body = await response.json();
+    if (!response.ok) { error.textContent = body.detail || body.error?.message || "Unable to validate key."; return; }
+    output.textContent = `Base URL: ${location.origin}${body.base_url}\nAPI Key: ${body.api_key}\n\nUse model names from GET ${location.origin}/v1/models`;
+    result.classList.remove("hidden"); form.reset();
+  });
+</script>
+</body>
+</html>
