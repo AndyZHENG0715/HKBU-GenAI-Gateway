@@ -41,6 +41,18 @@ def test_models_endpoints_without_auth(client):
         assert gpt["supportsVision"] is True
         assert gpt["contextWindow"] == 1_047_576
 
+        # Check Qwen capabilities (gated upstream)
+        qwen = next(m for m in data["data"] if m["id"] == "qwen3-max")
+        assert qwen["supportsToolCall"] is False
+        assert qwen["tool_call"] is False
+        assert qwen["capabilities"]["function_calling"] is False
+
+        # Check Llama capabilities (unparsed upstream)
+        llama = next(m for m in data["data"] if m["id"] == "llama-4-maverick")
+        assert llama["supportsToolCall"] is False
+        assert llama["tool_call"] is False
+        assert llama["capabilities"]["function_calling"] is False
+
 
 def test_single_model_endpoint(client):
     endpoints = [

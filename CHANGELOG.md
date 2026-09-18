@@ -5,6 +5,14 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-09-18
+
+### Documentation & Verification
+
+- Documented upstream Swagger schemas vs. runtime provider gating: explained why OpenAPI components define `ToolDto` across all models while the ChatGPT and Gemini docs explicitly clarify that other providers (Qwen, Llama) are currently gated.
+- Added comprehensive tool calling benchmark table across all HKBU platform models (Azure GPT, Gemini, DeepSeek, Qwen, Llama) in `docs/providers.md`.
+- Added explicit unit tests verifying Qwen and Llama capability flags (`supportsToolCall: false`, `tool_call: false`) to safeguard agent harnesses from unparsed natural language responses.
+
 ## [1.1.0] - 2026-09-18
 
 ### Added
