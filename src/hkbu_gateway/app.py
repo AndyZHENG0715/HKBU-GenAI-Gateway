@@ -187,21 +187,51 @@ async def revoke_credential(
     return {"revoked": revoked}
 
 
+def optional_gateway_key(
+    request: Request, authorization: str | None = Header(default=None)
+) -> Credential | None:
+    raw_token = authorization or request.headers.get("api-key") or request.headers.get("x-api-key")
+    supplied = _token(raw_token)
+    if not supplied:
+        return None
+    store: CredentialStore | None = getattr(request.app.state, "credentials", None)
+    if store:
+        credential = store.resolve(supplied)
+        if credential:
+            return credential
+    settings = getattr(request.app.state, "settings", Settings.from_env())
+    expected = settings.gateway_api_key
+    if expected and hmac.compare_digest(supplied, expected):
+        return Credential(0, "", settings.upstream_api_key or "")
+    return None
+
+
 @app.get("/v1/models")
-async def list_models(credential: Credential = Depends(require_gateway_key)) -> dict[str, Any]:
+@app.get("/models")
+@app.get("/v1/model")
+@app.get("/model")
+async def list_models(
+    credential: Credential | None = Depends(optional_gateway_key),
+) -> dict[str, Any]:
     now = int(time.time())
     return {
         "object": "list",
-        "data": [
-            {
-                "id": model.id,
-                "object": "model",
-                "created": now,
-                "owned_by": model.provider,
-            }
-            for model in MODELS
-        ],
+        "data": [model.to_dict(created=now) for model in MODELS],
     }
+
+
+@app.get("/v1/models/{model_id:path}")
+@app.get("/models/{model_id:path}")
+@app.get("/v1/model/{model_id:path}")
+@app.get("/model/{model_id:path}")
+async def get_model(
+    model_id: str,
+    credential: Credential | None = Depends(optional_gateway_key),
+) -> dict[str, Any]:
+    model = find_model(model_id)
+    if not model:
+        raise HTTPException(status_code=404, detail=f"Model not found: {model_id}")
+    return model.to_dict()
 
 
 def validate_model(model_id: str, kind: str):
@@ -222,6 +252,7 @@ def upstream_payload(request: BaseModel) -> dict[str, Any]:
 
 
 @app.post("/v1/chat/completions")
+@app.post("/chat/completions")
 async def chat_completions(
     request: ChatCompletionRequest,
     http_request: Request,
@@ -239,7 +270,17 @@ async def chat_completions(
                 headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
             )
         response = await provider.chat(model.id, payload, credential.hkbu_api_key)
-        return JSONResponse(content=response.json())
+        data = response.json()
+        if isinstance(data, dict) and "choices" in data:
+            for choice in data.get("choices", []):
+                msg = choice.get("message", {})
+                content = msg.get("content") or ""
+                if "<think>" in content and "</think>" in content:
+                    pre, rest = content.split("<think>", 1)
+                    think_body, post = rest.split("</think>", 1)
+                    msg["reasoning_content"] = think_body.strip()
+                    msg["content"] = (pre + post.lstrip("\n")).strip()
+        return JSONResponse(content=data)
     except (UpstreamError, httpx.HTTPError) as exc:
         status = exc.status_code if isinstance(exc, UpstreamError) else 502
         detail = exc.detail if isinstance(exc, UpstreamError) else str(exc)
@@ -247,6 +288,7 @@ async def chat_completions(
 
 
 @app.post("/v1/embeddings")
+@app.post("/embeddings")
 async def embeddings(
     request: EmbeddingRequest,
     http_request: Request,

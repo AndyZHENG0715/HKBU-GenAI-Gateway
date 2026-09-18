@@ -7,11 +7,43 @@ interface ToolPresetsProps {
 }
 
 export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
-  const [activePreset, setActivePreset] = useState<'chatbox' | 'nextchat' | 'cursor' | 'dify' | 'python' | 'curl'>('chatbox');
+  const [activePreset, setActivePreset] = useState<'chatbox' | 'nextchat' | 'cursor' | 'workbuddy' | 'dify' | 'python' | 'curl'>('chatbox');
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const baseUrl = getBaseUrl();
   const effectiveKey = apiKey || 'your-gateway-api-key';
+
+  const workbuddyJson = JSON.stringify(
+    {
+      models: [
+        {
+          id: 'deepseek-v4-flash',
+          name: 'DeepSeek V4 Flash',
+          vendor: 'Custom',
+          url: `${baseUrl}/chat/completions`,
+          apiKey: effectiveKey,
+          supportsToolCall: true,
+          supportsReasoning: true,
+          contextWindow: 1000000,
+          maxTokens: 384000,
+        },
+        {
+          id: 'gpt-4.1',
+          name: 'GPT-4.1',
+          vendor: 'Custom',
+          url: `${baseUrl}/chat/completions`,
+          apiKey: effectiveKey,
+          supportsToolCall: true,
+          supportsReasoning: false,
+          supportsVision: true,
+          contextWindow: 1047576,
+          maxTokens: 32768,
+        },
+      ],
+    },
+    null,
+    2
+  );
 
   const copyText = async (text: string, fieldId: string) => {
     try {
@@ -70,6 +102,18 @@ export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
           >
             <Code2 className="w-3.5 h-3.5" />
             <span>Cursor / VS Code</span>
+          </button>
+
+          <button
+            onClick={() => setActivePreset('workbuddy')}
+            className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              activePreset === 'workbuddy'
+                ? 'bg-hkbu-blue-700 text-white shadow-sm'
+                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
+            }`}
+          >
+            <Cpu className="w-3.5 h-3.5 text-hkbu-gold-500" />
+            <span>Tencent WorkBuddy</span>
           </button>
 
           <button
@@ -228,6 +272,62 @@ export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
               <li>Under <strong>Override OpenAI Base URL</strong>, check the box and enter: <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-mono text-xs">{baseUrl}</code></li>
               <li>Add custom model names: <code className="font-mono text-xs">gpt-4.1</code>, <code className="font-mono text-xs">deepseek-v4-flash</code>.</li>
             </ol>
+          </div>
+        )}
+
+        {/* Tencent WorkBuddy Preset */}
+        {activePreset === 'workbuddy' && (
+          <div className="space-y-4">
+            <h3 className="font-bold text-base text-slate-900 dark:text-white">
+              Connecting Tencent WorkBuddy AI Agent
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Configure HKBU models in Tencent WorkBuddy. Both tool calling (autonomous agent execution) and deep reasoning thoughts are supported out of the box:
+            </p>
+
+            <div className="space-y-3 pt-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Method 1: GUI Setup (Settings → Models → Add Model → Custom)</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <span className="font-semibold text-slate-500 block mb-1">API Base URL / Endpoint:</span>
+                  <div className="flex items-center justify-between font-mono bg-white dark:bg-slate-900 p-1.5 rounded border border-slate-200 dark:border-slate-750">
+                    <span className="truncate">{baseUrl}</span>
+                    <button onClick={() => copyText(baseUrl, 'wb-url')} className="text-hkbu-blue-600 dark:text-hkbu-blue-400 hover:underline ml-2">
+                      {copiedField === 'wb-url' ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                </div>
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <span className="font-semibold text-slate-500 block mb-1">API Key:</span>
+                  <div className="flex items-center justify-between font-mono bg-white dark:bg-slate-900 p-1.5 rounded border border-slate-200 dark:border-slate-750">
+                    <span className="truncate">{effectiveKey.slice(0, 14)}...</span>
+                    <button onClick={() => copyText(effectiveKey, 'wb-key')} className="text-hkbu-blue-600 dark:text-hkbu-blue-400 hover:underline ml-2">
+                      {copiedField === 'wb-key' ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="p-3 bg-emerald-50/80 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800/60 text-xs text-emerald-800 dark:text-emerald-200 space-y-1">
+                <p className="font-semibold">💡 Model Capabilities Auto-Discovery:</p>
+                <p>The gateway exposes model abilities via <code>/models</code>. If prompted manually, ensure <strong>Tool Call</strong> (for web fetch, bash, python execution) and <strong>Reasoning</strong> (for DeepSeek thought collapse) are enabled.</p>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Method 2: Configuration File (~/.workbuddy/models.json)</h4>
+                <button
+                  onClick={() => copyText(workbuddyJson, 'wb-json')}
+                  className="text-xs text-hkbu-blue-600 dark:text-hkbu-blue-400 font-medium hover:underline inline-flex items-center space-x-1"
+                >
+                  {copiedField === 'wb-json' ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedField === 'wb-json' ? 'Copied JSON' : 'Copy JSON Config'}</span>
+                </button>
+              </div>
+              <pre className="p-4 rounded-xl bg-slate-900 text-slate-100 font-mono text-xs overflow-x-auto">
+                <code>{workbuddyJson}</code>
+              </pre>
+            </div>
           </div>
         )}
 
