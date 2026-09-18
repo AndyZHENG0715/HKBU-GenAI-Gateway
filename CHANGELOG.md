@@ -7,6 +7,16 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-18
+
+### Added
+
+- Production frontend SPA built with React 19, TypeScript, Tailwind CSS, and Vite.
+- Built-in interactive Chat Playground with real-time streaming SSE and model switching.
+- Zero-config auto-generation and persistence of Fernet encryption keys for headless deployments (e.g., Railway).
+- Pre-configured tool presets (Open WebUI, LibreChat, Dify, Cursor, Cline/Roo Code).
+- Multi-model fallback validation for student HKBU Platform keys.
+
 ## [0.2.0] - 2026-09-13
 
 ### Added

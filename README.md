@@ -43,7 +43,9 @@ curl.exe http://127.0.0.1:8000/v1/models `
 
 The student's HKBU key is never accepted on `/v1/*`; it is encrypted in
 SQLite and used only for upstream requests. Set `HKBU_DATABASE_PATH` to change
-the database location.
+the database location. If `HKBU_GATEWAY_ENCRYPTION_KEY` is not set, a persistent
+encryption key is automatically generated and saved alongside the database
+(e.g., `hkbu_gateway.key`).
 
 For a client, use:
 

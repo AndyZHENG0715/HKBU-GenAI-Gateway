@@ -4,7 +4,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.db
+*.key
 .env
 dist/
 build/
 *.egg-info/
+node_modules/
+frontend/dist/

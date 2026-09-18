@@ -1,10 +1,49 @@
 import hashlib
+import logging
+import os
+from pathlib import Path
 import secrets
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from cryptography.fernet import Fernet, InvalidToken
+
+logger = logging.getLogger(__name__)
+
+
+def resolve_or_generate_key(database_path: str, encryption_key: str | None = None) -> str:
+    """Resolve explicit encryption key or auto-generate and persist next to database."""
+    if encryption_key:
+        return encryption_key
+
+    if database_path == ":memory:":
+        logger.info("Using ephemeral encryption key for in-memory database")
+        return Fernet.generate_key().decode()
+
+    key_path = Path(database_path).with_suffix(".key")
+    if key_path.is_file():
+        try:
+            stored_key = key_path.read_text(encoding="utf-8").strip()
+            # Validate Fernet key format
+            Fernet(stored_key.encode())
+            return stored_key
+        except Exception as exc:
+            logger.warning("Existing key file at %s was invalid (%s); generating a new key.", key_path, exc)
+
+    new_key = Fernet.generate_key().decode()
+    try:
+        key_path.parent.mkdir(parents=True, exist_ok=True)
+        key_path.write_text(new_key, encoding="utf-8")
+        try:
+            os.chmod(key_path, 0o600)
+        except OSError:
+            pass
+        logger.info("HKBU_GATEWAY_ENCRYPTION_KEY not set. Auto-generated encryption key saved to %s", key_path)
+    except OSError as exc:
+        logger.warning("Could not persist auto-generated encryption key to %s (%s). Using ephemeral key.", key_path, exc)
+
+    return new_key
 
 
 @dataclass(frozen=True)
@@ -15,18 +54,20 @@ class Credential:
 
 
 class CredentialStore:
-    def __init__(self, database_path: str, encryption_key: str | None):
-        if not encryption_key:
-            raise RuntimeError(
-                "HKBU_GATEWAY_ENCRYPTION_KEY must be configured for credential management"
-            )
+    def __init__(self, database_path: str, encryption_key: str | None = None):
+        resolved_key = resolve_or_generate_key(database_path, encryption_key)
         try:
-            self.cipher = Fernet(encryption_key.encode())
+            self.cipher = Fernet(resolved_key.encode())
         except ValueError as exc:
             raise RuntimeError(
                 "HKBU_GATEWAY_ENCRYPTION_KEY must be a valid Fernet key"
             ) from exc
         self.database_path = database_path
+        self._memory_conn: sqlite3.Connection | None = (
+            sqlite3.connect(":memory:") if database_path == ":memory:" else None
+        )
+        if self._memory_conn:
+            self._memory_conn.row_factory = sqlite3.Row
         with self._connect() as connection:
             connection.execute(
                 """
@@ -42,6 +83,8 @@ class CredentialStore:
             )
 
     def _connect(self) -> sqlite3.Connection:
+        if self._memory_conn:
+            return self._memory_conn
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
         return connection

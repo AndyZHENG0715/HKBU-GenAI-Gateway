@@ -1,9 +1,12 @@
 import asyncio
 import hmac
+import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -24,10 +27,8 @@ async def lifespan(app: FastAPI):
     settings = Settings.from_env()
     app.state.settings = settings
     app.state.provider = HKBUProvider(settings, app.state.client)
-    app.state.credentials = (
-        CredentialStore(settings.database_path, settings.encryption_key)
-        if settings.encryption_key
-        else None
+    app.state.credentials = CredentialStore(
+        settings.database_path, settings.encryption_key
     )
     yield
     await app.state.client.aclose()
@@ -87,19 +88,59 @@ async def create_credential(
     if not store:
         raise HTTPException(status_code=503, detail="Credential management is not configured")
     provider: HKBUProvider = http_request.app.state.provider
-    try:
-        await provider.chat(
-            "gpt-4.1",
-            {
-                "messages": [{"role": "user", "content": "Reply with exactly: credential-test-ok"}],
-                "max_tokens": 16,
-                "temperature": 0,
-            },
-            request.hkbu_api_key,
+
+    # Try common models to validate student key against upstream HKBU platform
+    models_to_test = ["gpt-4.1", "deepseek-v4-flash", "gpt-4.1-mini", "gemini-2.5-flash", "qwen-plus"]
+    validated = False
+    auth_failed = False
+    last_error_detail = ""
+
+    for test_model in models_to_test:
+        try:
+            await provider.chat(
+                test_model,
+                {
+                    "model": test_model,
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "max_tokens": 5,
+                },
+                request.hkbu_api_key,
+            )
+            validated = True
+            logger.info("HKBU key validation succeeded using model %s", test_model)
+            break
+        except UpstreamError as exc:
+            last_error_detail = exc.detail
+            logger.warning(
+                "Upstream validation test with %s returned HTTP %s: %s",
+                test_model,
+                exc.status_code,
+                exc.detail,
+            )
+            # If the upstream gateway specifically rejects the API key credentials, abort early
+            if exc.status_code == 401 and ("API key validation failed" in exc.detail or "Unauthorized" in exc.detail):
+                auth_failed = True
+                break
+            # Otherwise, the key was accepted by auth, but this specific model failed or has no quota; try next
+            continue
+        except httpx.HTTPError as exc:
+            last_error_detail = str(exc)
+            logger.warning("Upstream network error with %s: %s", test_model, exc)
+            continue
+
+    if auth_failed:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid HKBU GenAI Platform key. Please check your key at genai.hkbu.edu.hk.",
         )
-    except (UpstreamError, httpx.HTTPError) as exc:
-        detail = exc.detail if isinstance(exc, UpstreamError) else "HKBU key validation failed"
-        raise HTTPException(status_code=401, detail=detail) from exc
+
+    if not validated:
+        logger.error("All test models failed during key validation. Last error: %s", last_error_detail)
+        raise HTTPException(
+            status_code=502,
+            detail=f"HKBU Platform error ({last_error_detail}). Please verify your key has active quota on genai.hkbu.edu.hk.",
+        )
+
     credential = store.create(request.hkbu_api_key)
     return {
         "id": credential.key_id,
