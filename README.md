@@ -1,72 +1,121 @@
 # HKBU GenAI Gateway
 
-An OpenAI-compatible gateway for the HKBU GenAI Platform. Students submit an
-HKBU key once and receive a gateway key usable in OpenAI-compatible agents.
+An OpenAI-compatible self-service gateway and developer portal for the **HKBU GenAI Platform**. 
 
-## Current status
+Students and researchers can convert their university platform key into standard OpenAI credentials in 1 click, test models directly in a built-in web playground, and connect to desktop clients, coding agents, and custom workflows.
 
-Version `0.2.0` includes the core self-service flow: a student submits an HKBU
-key at `/`, the server validates it, stores it encrypted, and returns a
-one-time gateway key.
+---
 
-See:
+## ✨ Features
 
-- [Architecture](docs/architecture.md)
-- [Provider inventory and verification notes](docs/providers.md)
-- [Changelog](CHANGELOG.md)
+- **🔑 1-Click Key Conversion**: Validate student HKBU Platform keys and generate standard `Bearer` tokens compatible with any OpenAI SDK or client application.
+- **💬 Interactive Web Playground**:
+  - Test any university model directly in the browser with real-time SSE streaming.
+  - **🧠 DeepSeek Reasoning Accordion**: Collapsible thought process container supporting both `delta.reasoning_content` deltas and `<think>` tags.
+  - **📝 Rich Markdown Rendering**: Full GitHub Flavored Markdown support with tables, blockquotes, and syntax-highlighted code blocks with 1-click copy.
+  - **⚡ Message Actions**: Copy message text, edit user prompts with branch regeneration, and retry assistant responses.
+  - **📂 Multi-Turn Chat History**: Persistent conversation sessions stored in `localStorage` with "+ New Conversation" and session switching.
+- **🚀 Zero-Configuration Startup**: If `HKBU_GATEWAY_ENCRYPTION_KEY` is not set, a Fernet key (`hkbu_gateway.key`) is automatically generated and persisted next to the database. Compatible out-of-the-box with `railway up` and headless deployments.
+- **🛠️ Client Tool Presets**: Ready-to-copy configurations for Chatbox, NextChat, Cherry Studio, Cursor, VS Code / Cline, Dify, Open WebUI, LibreChat, and Python.
+- **🛡️ Secure at Rest**: Upstream university keys are encrypted with Fernet before SQLite persistence; the upstream key is never exposed to `/v1/*` clients.
+- **🌐 Dynamic Base URL**: Automatically adapts to deployment origin (e.g. `https://byok.aitutor.ink/v1` or `/hkbuapi4agent.html`), never hardcoding `localhost`.
 
-## Quick start
+---
 
-Requires Python 3.11 or newer.
+## 🚀 Quick Start
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
-$env:HKBU_GATEWAY_ENCRYPTION_KEY = "generate-a-fernet-key"
-python -m uvicorn hkbu_gateway.app:app --reload
+Requires Python 3.11+ and uv or pip.
+
+### 1. Install & Run Server
+
+```bash
+# Clone the repository
+git clone https://github.com/AndyZHENG0715/HKBU-GenAI-Gateway.git
+cd HKBU-GenAI-Gateway
+
+# Create virtual environment and install dependencies
+python3 -m venv .venv
+source .venv/bin/activate   # On Windows: .venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+
+# Start the gateway server (zero-config, key auto-generated)
+uvicorn hkbu_gateway.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Generate a Fernet key once with:
+Open `http://localhost:8000/` (or `http://localhost:8000/hkbuapi4agent.html`) in your browser to access the developer portal and playground.
 
-```powershell
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
+---
 
-Open `http://127.0.0.1:8000/`, enter the student's HKBU key, and copy the
-returned gateway key. The gateway key is shown only once.
-
-```powershell
-curl.exe http://127.0.0.1:8000/v1/models `
-  -H "Authorization: Bearer <gateway-key>"
-```
-
-The student's HKBU key is never accepted on `/v1/*`; it is encrypted in
-SQLite and used only for upstream requests. Set `HKBU_DATABASE_PATH` to change
-the database location. If `HKBU_GATEWAY_ENCRYPTION_KEY` is not set, a persistent
-encryption key is automatically generated and saved alongside the database
-(e.g., `hkbu_gateway.key`).
-
-For a client, use:
+## 💻 Using with Python OpenAI SDK
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="<gateway-key>",
-    base_url="http://127.0.0.1:8000/v1",
+    api_key="<your-generated-gateway-key>",
+    base_url="http://localhost:8000/v1",  # Or https://byok.aitutor.ink/v1
 )
-answer = client.chat.completions.create(
-    model="gpt-4.1",
-    messages=[{"role": "user", "content": "Hello"}],
+
+response = client.chat.completions.create(
+    model="gpt-4.1",  # Or deepseek-v4-flash, gemini-2.5-flash, etc.
+    messages=[
+        {"role": "user", "content": "Explain quantum computing in one sentence."}
+    ],
 )
+print(response.choices[0].message.content)
 ```
 
-## Development
+---
 
-```powershell
-python -m pytest
+## ⚙️ Configuration
+
+| Environment Variable | Description | Default |
+| :--- | :--- | :--- |
+| `HKBU_DATABASE_PATH` | Path to SQLite database file | `hkbu_gateway.db` |
+| `HKBU_GATEWAY_ENCRYPTION_KEY` | 32-byte Fernet key for key encryption | Auto-generated into `hkbu_gateway.key` |
+| `HKBU_UPSTREAM_BASE_URL` | Upstream HKBU GenAI endpoint | `https://genai.hkbu.edu.hk/api/v0/rest` |
+| `HKBU_API_KEY_HEADER` | Header name expected by upstream HKBU | `api-key` |
+
+---
+
+## 🎨 Frontend Development
+
+The frontend is a modern SPA built with **React 19**, **TypeScript**, **Tailwind CSS**, and **Vite** located in [`frontend/`](frontend/).
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start Vite dev server
+npm run dev
+
+# Build production bundle into static/
+npm run build
 ```
 
-Use Conventional Commits and update `VERSION` plus `CHANGELOG.md` for
-release-worthy changes.
+The production build automatically outputs to `static/` with relative asset links (`base: './'`) and mirrors to `static/hkbuapi4agent.html`.
+
+---
+
+## 🧪 Testing
+
+Run automated tests with pytest:
+
+```bash
+pytest
+```
+
+---
+
+## 📄 Versioning & Commits
+
+This project strictly follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Conventional Commits](https://www.conventionalcommits.org/):
+
+- `feat(...)`: New features
+- `fix(...)`: Bug fixes
+- `docs(...)`: Documentation changes
+- `refactor(...)`: Code refactoring without behavior change
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md).
