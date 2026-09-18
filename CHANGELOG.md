@@ -7,6 +7,15 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-18
+
+### Added
+
+- DeepSeek reasoning thought process accordion (`ThinkingBox`) supporting both `reasoning_content` deltas and `<think>` tags.
+- Full GitHub Flavored Markdown rendering with tables, blockquotes, and code syntax blocks with copy buttons.
+- Chat message toolbar with Copy Message, Edit User Message, and Retry / Regenerate response actions.
+- Persistent multi-turn conversation history sidebar with `localStorage` backing, "+ New Chat", and session switching.
+
 ## [0.3.0] - 2026-09-18
 
 ### Added

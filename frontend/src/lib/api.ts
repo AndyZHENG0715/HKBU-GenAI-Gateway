@@ -87,11 +87,16 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface StreamChunk {
+  content?: string;
+  reasoning_content?: string;
+}
+
 export interface StreamChatOptions {
   model: string;
   messages: ChatMessage[];
   gatewayKey: string;
-  onChunk: (delta: string) => void;
+  onChunk: (chunk: StreamChunk) => void;
   onError: (err: Error) => void;
   onFinish: () => void;
   signal?: AbortSignal;
@@ -156,9 +161,13 @@ export async function streamChatCompletion({
           const jsonStr = trimmed.slice(6);
           try {
             const parsed = JSON.parse(jsonStr);
-            const delta = parsed.choices?.[0]?.delta?.content;
+            const delta = parsed.choices?.[0]?.delta;
             if (delta) {
-              onChunk(delta);
+              const content = delta.content || '';
+              const reasoning = delta.reasoning_content || delta.reasoning || '';
+              if (content || reasoning) {
+                onChunk({ content, reasoning_content: reasoning });
+              }
             }
           } catch {
             // Ignore incomplete line parse
@@ -176,3 +185,4 @@ export async function streamChatCompletion({
     onError(err instanceof Error ? err : new Error(String(err)));
   }
 }
+

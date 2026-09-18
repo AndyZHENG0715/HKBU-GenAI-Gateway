@@ -1,7 +1,63 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Trash2, Key, Square, AlertCircle, Copy, Check } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import {
+  Send,
+  Bot,
+  User,
+  Trash2,
+  Key,
+  Square,
+  AlertCircle,
+  Copy,
+  Check,
+  RotateCw,
+  Edit3,
+  Plus,
+  MessageSquare,
+  History,
+  Sparkles,
+} from 'lucide-react';
 import { SUPPORTED_MODELS } from '../lib/models';
-import { streamChatCompletion, ChatMessage } from '../lib/api';
+import { streamChatCompletion, StreamChunk } from '../lib/api';
+import { MarkdownRenderer } from './MarkdownRenderer';
+import { ThinkingBox } from './ThinkingBox';
+
+export interface PlaygroundMessage {
+  id: string;
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+  reasoning?: string;
+  isThinking?: boolean;
+  timestamp?: number;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  model: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: PlaygroundMessage[];
+}
+
+const STORAGE_KEY_SESSIONS = 'hkbu_playground_sessions_v2';
+const STORAGE_KEY_ACTIVE = 'hkbu_playground_active_session_v2';
+
+const createDefaultSession = (): ChatSession => ({
+  id: `session-${Date.now()}`,
+  title: 'New Conversation',
+  model: 'gpt-4.1',
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+  messages: [
+    {
+      id: `msg-${Date.now()}-welcome`,
+      role: 'assistant',
+      content:
+        'Hello! I am connected to the HKBU GenAI Gateway. You can chat directly with any model here—with rich markdown, deep reasoning thought processes, and full conversation history. What would you like to explore?',
+      timestamp: Date.now(),
+    },
+  ],
+});
 
 interface PlaygroundProps {
   currentApiKey: string;
@@ -9,20 +65,70 @@ interface PlaygroundProps {
 
 export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
   const [apiKey, setApiKey] = useState(currentApiKey || '');
-  const [selectedModel, setSelectedModel] = useState('gpt-4.1');
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_SESSIONS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return [createDefaultSession()];
+  });
+
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    try {
+      const savedActive = localStorage.getItem(STORAGE_KEY_ACTIVE);
+      if (savedActive && sessions.some((s) => s.id === savedActive)) {
+        return savedActive;
+      }
+    } catch {
+      // ignore
+    }
+    return sessions[0]?.id || '';
+  });
+
+  const [showSidebar, setShowSidebar] = useState(true);
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: 'assistant',
-      content: 'Hello! I am connected to the HKBU GenAI Gateway. You can chat with me directly to test out any model without installing external software. What would you like to explore today?',
-    },
-  ]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+  // Message action states
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
+  const [editInput, setEditInput] = useState('');
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Active Session helper
+  const currentSession = useMemo(() => {
+    return sessions.find((s) => s.id === activeSessionId) || sessions[0];
+  }, [sessions, activeSessionId]);
+
+  const selectedModel = currentSession?.model || 'gpt-4.1';
+
+  // Persist sessions to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(sessions));
+    } catch {
+      // ignore
+    }
+  }, [sessions]);
+
+  // Persist active session ID
+  useEffect(() => {
+    if (activeSessionId) {
+      try {
+        localStorage.setItem(STORAGE_KEY_ACTIVE, activeSessionId);
+      } catch {
+        // ignore
+      }
+    }
+  }, [activeSessionId]);
 
   // Sync API key if updated externally
   useEffect(() => {
@@ -31,66 +137,210 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
     }
   }, [currentApiKey]);
 
-  // Auto scroll to bottom of messages
+  // Auto scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isStreaming]);
+  }, [currentSession?.messages, isStreaming]);
 
-  const handleSend = async (textToSend?: string) => {
-    const text = (textToSend || input).trim();
-    if (!text || isStreaming) return;
+  const updateCurrentSession = (updater: (session: ChatSession) => ChatSession) => {
+    setSessions((prev) =>
+      prev.map((s) => (s.id === currentSession.id ? updater(s) : s))
+    );
+  };
 
+  const handleModelChange = (newModel: string) => {
+    updateCurrentSession((s) => ({ ...s, model: newModel, updatedAt: Date.now() }));
+  };
+
+  const handleNewChat = () => {
+    if (isStreaming) handleStop();
+    const newSession = createDefaultSession();
+    setSessions((prev) => [newSession, ...prev]);
+    setActiveSessionId(newSession.id);
+    setInput('');
+    setError(null);
+  };
+
+  const handleDeleteSession = (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isStreaming && sessionId === activeSessionId) {
+      handleStop();
+    }
+    const remaining = sessions.filter((s) => s.id !== sessionId);
+    if (remaining.length === 0) {
+      const fresh = createDefaultSession();
+      setSessions([fresh]);
+      setActiveSessionId(fresh.id);
+    } else {
+      setSessions(remaining);
+      if (sessionId === activeSessionId) {
+        setActiveSessionId(remaining[0].id);
+      }
+    }
+  };
+
+  const handleClearAllSessions = () => {
+    if (window.confirm('Are you sure you want to clear all conversation history?')) {
+      handleStop();
+      const fresh = createDefaultSession();
+      setSessions([fresh]);
+      setActiveSessionId(fresh.id);
+      setError(null);
+    }
+  };
+
+  const executeCompletion = async (
+    allMessages: PlaygroundMessage[],
+    assistantMsgId: string,
+    modelToUse: string
+  ) => {
     if (!apiKey.trim()) {
       setError('Please enter or generate a Gateway API Key first.');
+      setIsStreaming(false);
       return;
     }
 
     setError(null);
-    const userMsg: ChatMessage = { role: 'user', content: text };
-    const newMessages: ChatMessage[] = [...messages, userMsg];
-    setMessages(newMessages);
-    setInput('');
-
-    // Prepare assistant placeholder
-    const assistantMsgIndex = newMessages.length;
-    setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
     setIsStreaming(true);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Filter out initial welcome message if we want, or pass conversation
-    const history = newMessages.map((m) => ({ role: m.role, content: m.content }));
+    // Filter valid conversation history to send upstream
+    // Exclude lone initial greeting if no user turn came before it
+    const historyCandidates = allMessages
+      .filter((m) => m.id !== assistantMsgId)
+      .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim());
 
-    let streamedText = '';
+    const firstUserIdx = historyCandidates.findIndex((m) => m.role === 'user');
+    const validHistory = firstUserIdx >= 0 ? historyCandidates.slice(firstUserIdx) : historyCandidates;
+
+    const payloadMessages = validHistory.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+
+    let rawReasoning = '';
+    let rawContent = '';
 
     await streamChatCompletion({
-      model: selectedModel,
-      messages: history,
+      model: modelToUse,
+      messages: payloadMessages,
       gatewayKey: apiKey,
       signal: controller.signal,
-      onChunk: (chunk) => {
-        streamedText += chunk;
-        setMessages((prev) => {
-          const updated = [...prev];
-          if (updated[assistantMsgIndex]) {
-            updated[assistantMsgIndex] = {
-              ...updated[assistantMsgIndex],
-              content: streamedText,
-            };
+      onChunk: (chunk: StreamChunk) => {
+        if (chunk.reasoning_content) {
+          rawReasoning += chunk.reasoning_content;
+        }
+        if (chunk.content) {
+          rawContent += chunk.content;
+        }
+
+        // Check if content contains <think> tags (DeepSeek R1 raw output)
+        let parsedReasoning = rawReasoning;
+        let parsedContent = rawContent;
+        let currentlyThinking = false;
+
+        if (rawContent.includes('<think>')) {
+          if (rawContent.includes('</think>')) {
+            const parts = rawContent.split('</think>');
+            const thinkPart = parts[0].replace('<think>', '').trim();
+            const afterPart = parts.slice(1).join('</think>').trimStart();
+            parsedReasoning = [rawReasoning, thinkPart].filter(Boolean).join('\n\n');
+            parsedContent = afterPart;
+            currentlyThinking = false;
+          } else {
+            const thinkPart = rawContent.replace('<think>', '').trimStart();
+            parsedReasoning = [rawReasoning, thinkPart].filter(Boolean).join('\n\n');
+            parsedContent = '';
+            currentlyThinking = true;
           }
-          return updated;
-        });
+        } else {
+          // If reasoning came from delta.reasoning_content
+          if (rawReasoning && !rawContent) {
+            currentlyThinking = true;
+          } else {
+            currentlyThinking = false;
+          }
+        }
+
+        updateCurrentSession((session) => ({
+          ...session,
+          updatedAt: Date.now(),
+          messages: session.messages.map((m) =>
+            m.id === assistantMsgId
+              ? {
+                  ...m,
+                  content: parsedContent,
+                  reasoning: parsedReasoning,
+                  isThinking: currentlyThinking,
+                }
+              : m
+          ),
+        }));
       },
       onError: (err) => {
         setError(err.message);
         setIsStreaming(false);
+        updateCurrentSession((session) => ({
+          ...session,
+          messages: session.messages.map((m) =>
+            m.id === assistantMsgId ? { ...m, isThinking: false } : m
+          ),
+        }));
       },
       onFinish: () => {
         setIsStreaming(false);
         abortControllerRef.current = null;
+        updateCurrentSession((session) => ({
+          ...session,
+          messages: session.messages.map((m) =>
+            m.id === assistantMsgId ? { ...m, isThinking: false } : m
+          ),
+        }));
       },
     });
+  };
+
+  const handleSend = async (textToSend?: string) => {
+    const text = (textToSend || input).trim();
+    if (!text || isStreaming) return;
+
+    setError(null);
+    const userMsg: PlaygroundMessage = {
+      id: `msg-${Date.now()}-user`,
+      role: 'user',
+      content: text,
+      timestamp: Date.now(),
+    };
+
+    const assistantMsgId = `msg-${Date.now() + 1}-assistant`;
+    const assistantMsg: PlaygroundMessage = {
+      id: assistantMsgId,
+      role: 'assistant',
+      content: '',
+      reasoning: '',
+      isThinking: selectedModel.toLowerCase().includes('deepseek'),
+      timestamp: Date.now(),
+    };
+
+    // Auto-update session title if it is the first user message
+    const isFirstUserMessage = !currentSession.messages.some((m) => m.role === 'user');
+    const newTitle = isFirstUserMessage
+      ? text.slice(0, 30) + (text.length > 30 ? '...' : '')
+      : currentSession.title;
+
+    const newMessages = [...currentSession.messages, userMsg, assistantMsg];
+
+    updateCurrentSession((s) => ({
+      ...s,
+      title: newTitle,
+      updatedAt: Date.now(),
+      messages: newMessages,
+    }));
+
+    setInput('');
+    await executeCompletion(newMessages, assistantMsgId, selectedModel);
   };
 
   const handleStop = () => {
@@ -98,59 +348,151 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
       setIsStreaming(false);
+      updateCurrentSession((session) => ({
+        ...session,
+        messages: session.messages.map((m) => ({ ...m, isThinking: false })),
+      }));
     }
   };
 
-  const handleClear = () => {
-    handleStop();
-    setMessages([
-      {
-        role: 'assistant',
-        content: 'Conversation cleared. Select a model and send a message whenever you are ready!',
-      },
-    ]);
-    setError(null);
+  // Retry / Regenerate message
+  const handleRetry = async (assistantMsgIndex: number) => {
+    if (isStreaming) return;
+
+    const msgs = [...currentSession.messages];
+    // Find preceding user message
+    let precedingUserIdx = assistantMsgIndex - 1;
+    while (precedingUserIdx >= 0 && msgs[precedingUserIdx].role !== 'user') {
+      precedingUserIdx--;
+    }
+
+    if (precedingUserIdx < 0) return;
+
+    // Truncate to the user message
+    const truncated = msgs.slice(0, precedingUserIdx + 1);
+    const newAssistantMsgId = `msg-${Date.now()}-assistant`;
+    const newAssistantMsg: PlaygroundMessage = {
+      id: newAssistantMsgId,
+      role: 'assistant',
+      content: '',
+      reasoning: '',
+      isThinking: selectedModel.toLowerCase().includes('deepseek'),
+      timestamp: Date.now(),
+    };
+
+    const updatedMessages = [...truncated, newAssistantMsg];
+
+    updateCurrentSession((s) => ({
+      ...s,
+      updatedAt: Date.now(),
+      messages: updatedMessages,
+    }));
+
+    await executeCompletion(updatedMessages, newAssistantMsgId, selectedModel);
   };
 
-  const handleCopyMessage = (index: number, content: string) => {
-    navigator.clipboard.writeText(content);
-    setCopiedIndex(index);
-    setTimeout(() => setCopiedIndex(null), 2000);
+  // Edit user message
+  const handleStartEdit = (msg: PlaygroundMessage) => {
+    if (isStreaming) return;
+    setEditingMsgId(msg.id);
+    setEditInput(msg.content);
+  };
+
+  const handleSaveEdit = async (msgIndex: number) => {
+    if (!editInput.trim() || isStreaming) return;
+
+    const msgs = [...currentSession.messages];
+    const userMsg = msgs[msgIndex];
+    if (!userMsg || userMsg.role !== 'user') return;
+
+    // Truncate everything after this message
+    const truncated = msgs.slice(0, msgIndex);
+    const updatedUserMsg: PlaygroundMessage = {
+      ...userMsg,
+      content: editInput.trim(),
+      timestamp: Date.now(),
+    };
+
+    const assistantMsgId = `msg-${Date.now()}-assistant`;
+    const assistantMsg: PlaygroundMessage = {
+      id: assistantMsgId,
+      role: 'assistant',
+      content: '',
+      reasoning: '',
+      isThinking: selectedModel.toLowerCase().includes('deepseek'),
+      timestamp: Date.now(),
+    };
+
+    const updatedMessages = [...truncated, updatedUserMsg, assistantMsg];
+
+    setEditingMsgId(null);
+    setEditInput('');
+
+    updateCurrentSession((s) => ({
+      ...s,
+      updatedAt: Date.now(),
+      messages: updatedMessages,
+    }));
+
+    await executeCompletion(updatedMessages, assistantMsgId, selectedModel);
+  };
+
+  const handleCopyMessage = async (id: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMsgId(id);
+      setTimeout(() => setCopiedMsgId(null), 2000);
+    } catch {
+      // ignore
+    }
   };
 
   const quickPrompts = [
-    'Explain quantum computing in simple terms for a non-science student.',
-    'Help me brainstorm 3 essay topics on the ethics of artificial intelligence.',
-    'Write a polite email asking a professor for an assignment extension.',
-    'Summarize the main differences between qualitative and quantitative research.',
+    'Explain how Large Language Models work in simple words.',
+    'Brainstorm 3 creative research topics about AI ethics.',
+    'Write a polite email asking a professor for a project meeting.',
+    'Compare the pros and cons of qualitative vs quantitative research.',
   ];
 
   const chatModels = SUPPORTED_MODELS.filter((m) => m.kind === 'chat');
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col h-[750px] max-h-[85vh] transition-all">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col h-[780px] max-h-[85vh] transition-all">
       {/* Playground Top Bar */}
-      <div className="p-4 sm:px-6 bg-slate-50/80 dark:bg-slate-850 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center space-x-3">
+      <div className="p-3 sm:px-5 bg-slate-50/90 dark:bg-slate-850 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center space-x-2 sm:space-x-3">
+          {/* Toggle History Sidebar */}
+          <button
+            onClick={() => setShowSidebar(!showSidebar)}
+            className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+              showSidebar
+                ? 'bg-hkbu-blue-50 dark:bg-hkbu-blue-900/40 text-hkbu-blue-700 dark:text-hkbu-blue-300 border-hkbu-blue-200 dark:border-hkbu-blue-800'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+            }`}
+            title={showSidebar ? 'Hide History Sidebar' : 'Show History Sidebar'}
+          >
+            <History className="w-4 h-4" />
+          </button>
+
           <div className="w-8 h-8 rounded-lg bg-hkbu-blue-100 dark:bg-hkbu-blue-900/60 text-hkbu-blue-700 dark:text-hkbu-blue-300 flex items-center justify-center font-bold text-xs">
             AI
           </div>
           <div>
-            <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+            <h3 className="font-bold text-sm text-slate-900 dark:text-white leading-tight">
               Interactive Chat Playground
             </h3>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Test any HKBU model directly in your browser
+              HKBU multi-turn conversational testing
             </p>
           </div>
         </div>
 
-        {/* Model Selector & Key Settings */}
+        {/* Model Selector & Actions */}
         <div className="flex items-center space-x-2 sm:space-x-3 w-full sm:w-auto">
           {/* Model Dropdown */}
           <select
             value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
+            onChange={(e) => handleModelChange(e.target.value)}
             disabled={isStreaming}
             className="text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-hkbu-blue-500 shadow-sm cursor-pointer"
           >
@@ -161,26 +503,27 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
             ))}
           </select>
 
-          {/* Clear Button */}
+          {/* New Chat Button */}
           <button
-            onClick={handleClear}
-            disabled={isStreaming || messages.length <= 1}
-            title="Clear conversation"
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-750 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            onClick={handleNewChat}
+            disabled={isStreaming}
+            title="Start new conversation"
+            className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-hkbu-blue-50 dark:bg-hkbu-blue-950/60 text-hkbu-blue-700 dark:text-hkbu-blue-300 hover:bg-hkbu-blue-100 border border-hkbu-blue-200 dark:border-hkbu-blue-800/80 flex items-center space-x-1 cursor-pointer transition-colors"
           >
-            <Trash2 className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">New Chat</span>
           </button>
         </div>
       </div>
 
-      {/* Gateway Key Bar if key is missing or to allow manual entry */}
+      {/* Gateway Key Banner */}
       <div className="px-4 sm:px-6 py-2 bg-hkbu-blue-50/50 dark:bg-hkbu-blue-950/20 border-b border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between gap-2 text-xs">
         <div className="flex items-center space-x-1.5 text-slate-600 dark:text-slate-300 font-medium">
           <Key className="w-3.5 h-3.5 text-hkbu-gold-500" />
           <span>Active Key:</span>
           {apiKey ? (
             <span className="font-mono text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-              {apiKey.slice(0, 15)}...
+              {apiKey.slice(0, 14)}...
             </span>
           ) : (
             <span className="text-amber-600 dark:text-amber-400">No key provided</span>
@@ -197,129 +540,299 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
         </div>
       </div>
 
-      {/* Error Banner */}
+      {/* Error Alert Banner */}
       {error && (
         <div className="px-4 sm:px-6 py-2.5 bg-red-50 dark:bg-red-950/60 border-b border-red-200 dark:border-red-900 text-xs text-red-700 dark:text-red-300 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
             <span>{error}</span>
           </div>
-          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700 font-bold ml-2">
+          <button
+            onClick={() => setError(null)}
+            className="text-red-500 hover:text-red-700 font-bold ml-2 cursor-pointer"
+          >
             ×
           </button>
         </div>
       )}
 
-      {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-        {messages.map((msg, index) => {
-          const isUser = msg.role === 'user';
-          return (
-            <div
-              key={index}
-              className={`flex items-start space-x-3 ${isUser ? 'flex-row-reverse space-x-reverse' : 'flex-row'}`}
-            >
-              {/* Avatar */}
-              <div
-                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${
-                  isUser
-                    ? 'bg-hkbu-blue-700 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-hkbu-blue-700 dark:text-hkbu-blue-300 border border-slate-200 dark:border-slate-700'
-                }`}
+      {/* Main Container: Sidebar + Chat Stream */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* History Sidebar */}
+        {showSidebar && (
+          <div className="w-60 sm:w-64 border-r border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60 flex flex-col flex-shrink-0 transition-all">
+            {/* Sidebar Top: New Chat button */}
+            <div className="p-3 border-b border-slate-200/60 dark:border-slate-800 flex items-center justify-between">
+              <button
+                onClick={handleNewChat}
+                disabled={isStreaming}
+                className="w-full flex items-center justify-center space-x-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold bg-hkbu-blue-700 hover:bg-hkbu-blue-800 text-white shadow-sm transition-colors cursor-pointer"
               >
-                {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-              </div>
+                <Plus className="w-3.5 h-3.5" />
+                <span>New Conversation</span>
+              </button>
+            </div>
 
-              {/* Message Content */}
-              <div
-                className={`group relative max-w-[85%] sm:max-w-[75%] rounded-2xl p-3.5 sm:p-4 text-sm leading-relaxed shadow-sm ${
-                  isUser
-                    ? 'bg-hkbu-blue-700 text-white rounded-tr-none'
-                    : 'bg-slate-50 dark:bg-slate-800/90 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 rounded-tl-none'
-                }`}
-              >
-                <div className="whitespace-pre-wrap break-words">{msg.content || (isStreaming && index === messages.length - 1 ? <span className="inline-block w-2 h-4 bg-hkbu-blue-500 animate-pulse ml-1 align-middle"></span> : '')}</div>
-
-                {/* Copy helper on assistant responses */}
-                {!isUser && msg.content && (
-                  <button
-                    onClick={() => handleCopyMessage(index, msg.content)}
-                    className="opacity-0 group-hover:opacity-100 absolute top-2 right-2 p-1 rounded bg-white/80 dark:bg-slate-700/80 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-opacity"
-                    title="Copy response"
+            {/* Sidebar List */}
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              {sessions.map((sess) => {
+                const isActive = sess.id === activeSessionId;
+                return (
+                  <div
+                    key={sess.id}
+                    onClick={() => {
+                      if (isStreaming) handleStop();
+                      setActiveSessionId(sess.id);
+                      setError(null);
+                    }}
+                    className={`group flex items-center justify-between px-2.5 py-2 rounded-lg text-xs cursor-pointer transition-all ${
+                      isActive
+                        ? 'bg-hkbu-blue-100/70 dark:bg-hkbu-blue-900/50 text-hkbu-blue-900 dark:text-white font-medium border border-hkbu-blue-200 dark:border-hkbu-blue-800/80 shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-200'
+                    }`}
                   >
-                    {copiedIndex === index ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <div className="flex items-center space-x-2 truncate mr-1">
+                      <MessageSquare className="w-3.5 h-3.5 flex-shrink-0 opacity-70" />
+                      <span className="truncate">{sess.title}</span>
+                    </div>
+
+                    <button
+                      onClick={(e) => handleDeleteSession(sess.id, e)}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-100 dark:hover:bg-red-950 text-slate-400 hover:text-red-600 transition-opacity"
+                      title="Delete chat"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Sidebar Bottom: Clear All History */}
+            <div className="p-2.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between">
+              <button
+                onClick={handleClearAllSessions}
+                className="w-full flex items-center justify-center space-x-1 py-1 px-2 text-[11px] text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Clear All History</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Chat Area */}
+        <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-slate-900">
+          {/* Messages Scroll Area */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+            {currentSession.messages.map((msg, index) => {
+              const isUser = msg.role === 'user';
+              const isEditing = editingMsgId === msg.id;
+
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex items-start space-x-3 ${
+                    isUser ? 'flex-row-reverse space-x-reverse' : 'flex-row'
+                  }`}
+                >
+                  {/* Avatar */}
+                  <div
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${
+                      isUser
+                        ? 'bg-hkbu-blue-700 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-hkbu-blue-700 dark:text-hkbu-blue-300 border border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                  </div>
+
+                  {/* Message Bubble */}
+                  <div
+                    className={`group relative max-w-[88%] sm:max-w-[80%] rounded-2xl p-4 text-sm leading-relaxed shadow-sm ${
+                      isUser
+                        ? 'bg-hkbu-blue-700 text-white rounded-tr-none'
+                        : 'bg-slate-50 dark:bg-slate-800/90 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 rounded-tl-none'
+                    }`}
+                  >
+                    {/* Inline User Editing Mode */}
+                    {isEditing ? (
+                      <div className="space-y-2 min-w-[260px] sm:min-w-[340px]">
+                        <textarea
+                          value={editInput}
+                          onChange={(e) => setEditInput(e.target.value)}
+                          rows={3}
+                          className="w-full text-xs sm:text-sm p-2.5 rounded-lg bg-white dark:bg-slate-850 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-1 focus:ring-hkbu-blue-500"
+                        />
+                        <div className="flex items-center justify-end space-x-2">
+                          <button
+                            onClick={() => setEditingMsgId(null)}
+                            className="px-2.5 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => handleSaveEdit(index)}
+                            className="px-3 py-1 text-xs font-medium bg-hkbu-gold-500 hover:bg-hkbu-gold-400 text-slate-950 rounded shadow-sm transition-colors"
+                          >
+                            Save & Submit
+                          </button>
+                        </div>
+                      </div>
                     ) : (
-                      <Copy className="w-3.5 h-3.5" />
+                      <>
+                        {/* Thinking Process Accordion for DeepSeek / Reasoning models */}
+                        {!isUser && (msg.reasoning || msg.isThinking) && (
+                          <ThinkingBox
+                            reasoning={msg.reasoning || ''}
+                            isThinking={msg.isThinking}
+                          />
+                        )}
+
+                        {/* Message Content with Rich Markdown Rendering */}
+                        {isUser ? (
+                          <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                        ) : (
+                          <div>
+                            {msg.content ? (
+                              <MarkdownRenderer content={msg.content} />
+                            ) : msg.isThinking ? (
+                              <div className="text-xs text-slate-400 dark:text-slate-500 italic flex items-center space-x-1.5 py-1">
+                                <Sparkles className="w-3.5 h-3.5 animate-spin text-hkbu-gold-500" />
+                                <span>Generating thoughts...</span>
+                              </div>
+                            ) : isStreaming && index === currentSession.messages.length - 1 ? (
+                              <span className="inline-block w-2 h-4 bg-hkbu-blue-500 animate-pulse ml-1 align-middle"></span>
+                            ) : null}
+                          </div>
+                        )}
+
+                        {/* Action Toolbar on hover */}
+                        <div
+                          className={`mt-2 pt-1 border-t border-slate-200/50 dark:border-slate-700/50 flex items-center justify-end space-x-1.5 text-xs opacity-0 group-hover:opacity-100 transition-opacity ${
+                            isUser ? 'text-white/80' : 'text-slate-400 dark:text-slate-400'
+                          }`}
+                        >
+                          {/* Copy Message Button */}
+                          <button
+                            onClick={() => handleCopyMessage(msg.id, msg.content)}
+                            type="button"
+                            className={`p-1 rounded transition-colors flex items-center space-x-1 ${
+                              isUser
+                                ? 'hover:bg-white/20 text-white'
+                                : 'hover:bg-slate-200/80 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200'
+                            }`}
+                            title="Copy message"
+                          >
+                            {copiedMsgId === msg.id ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-400" />
+                                <span className="text-[10px] text-emerald-400">Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" />
+                                <span className="text-[10px]">Copy</span>
+                              </>
+                            )}
+                          </button>
+
+                          {/* Edit button on User message */}
+                          {isUser && !isStreaming && (
+                            <button
+                              onClick={() => handleStartEdit(msg)}
+                              type="button"
+                              className="p-1 rounded hover:bg-white/20 text-white transition-colors flex items-center space-x-1"
+                              title="Edit message"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                              <span className="text-[10px]">Edit</span>
+                            </button>
+                          )}
+
+                          {/* Retry button on Assistant message */}
+                          {!isUser && !isStreaming && (
+                            <button
+                              onClick={() => handleRetry(index)}
+                              type="button"
+                              className="p-1 rounded hover:bg-slate-200/80 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 transition-colors flex items-center space-x-1"
+                              title="Regenerate response"
+                            >
+                              <RotateCw className="w-3 h-3" />
+                              <span className="text-[10px]">Retry</span>
+                            </button>
+                          )}
+                        </div>
+                      </>
                     )}
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Quick Prompts if conversation is fresh */}
+          {currentSession.messages.length <= 2 && (
+            <div className="px-4 sm:px-6 py-2 bg-slate-50/50 dark:bg-slate-850/50 border-t border-slate-100 dark:border-slate-800/80">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
+                Suggested Prompts
+              </span>
+              <div className="flex items-center space-x-2 overflow-x-auto pb-1">
+                {quickPrompts.map((prompt, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSend(prompt)}
+                    disabled={isStreaming}
+                    className="whitespace-nowrap px-2.5 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-slate-600 dark:text-slate-300 hover:border-hkbu-blue-400 hover:text-hkbu-blue-600 dark:hover:text-hkbu-blue-400 transition-all flex-shrink-0 cursor-pointer"
+                  >
+                    {prompt}
                   </button>
-                )}
+                ))}
               </div>
             </div>
-          );
-        })}
-        <div ref={messagesEndRef} />
-      </div>
+          )}
 
-      {/* Suggested Quick Prompts (Only if message count is low) */}
-      {messages.length <= 2 && (
-        <div className="px-4 sm:px-6 py-2 bg-slate-50/50 dark:bg-slate-850/50 border-t border-slate-100 dark:border-slate-800/80">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
-            Suggested Prompts
-          </span>
-          <div className="flex items-center space-x-2 overflow-x-auto pb-1">
-            {quickPrompts.map((prompt, i) => (
-              <button
-                key={i}
-                onClick={() => handleSend(prompt)}
+          {/* Chat Input Bar */}
+          <div className="p-3 sm:p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSend();
+              }}
+              className="flex items-center space-x-2"
+            >
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={`Message ${selectedModel}...`}
                 disabled={isStreaming}
-                className="whitespace-nowrap px-2.5 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-slate-600 dark:text-slate-300 hover:border-hkbu-blue-400 hover:text-hkbu-blue-600 dark:hover:text-hkbu-blue-400 transition-all flex-shrink-0 cursor-pointer"
-              >
-                {prompt}
-              </button>
-            ))}
+                className="flex-1 px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-hkbu-blue-500/30 focus:border-hkbu-blue-500 text-slate-900 dark:text-white placeholder-slate-400 transition-all"
+              />
+
+              {isStreaming ? (
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  className="p-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium shadow-sm transition-all cursor-pointer flex items-center justify-center"
+                  title="Stop generating"
+                >
+                  <Square className="w-4 h-4 fill-white" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim() || isStreaming}
+                  className="p-2.5 rounded-xl bg-hkbu-blue-700 hover:bg-hkbu-blue-800 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-sm transition-all cursor-pointer flex items-center justify-center"
+                  title="Send message"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              )}
+            </form>
           </div>
         </div>
-      )}
-
-      {/* Chat Input Bar */}
-      <div className="p-3 sm:p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSend();
-          }}
-          className="flex items-center space-x-2"
-        >
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={`Message ${selectedModel}...`}
-            disabled={isStreaming}
-            className="flex-1 px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-hkbu-blue-500/30 focus:border-hkbu-blue-500 text-slate-900 dark:text-white placeholder-slate-400 transition-all"
-          />
-
-          {isStreaming ? (
-            <button
-              type="button"
-              onClick={handleStop}
-              className="p-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium shadow-sm transition-all cursor-pointer"
-              title="Stop generating"
-            >
-              <Square className="w-4 h-4 fill-white" />
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={!input.trim() || isStreaming}
-              className="p-2.5 rounded-xl bg-hkbu-blue-700 hover:bg-hkbu-blue-800 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-sm transition-all cursor-pointer"
-              title="Send message"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          )}
-        </form>
       </div>
     </div>
   );
