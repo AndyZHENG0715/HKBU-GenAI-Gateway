@@ -5,6 +5,19 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-18
+
+### Added
+
+- **Gateway Tool Calling Emulation Adapter (`tools.py`)**:
+  - Automatically emulates OpenAI-compatible function calling for upstream providers where tools are gated or unparsed (specifically Alibaba Cloud Qwen `qwen3-max`, `qwen-plus` and Google Vertex AI Llama `llama-4-maverick`).
+  - System prompt schema serialization: transparently translates `tools: [...]` into authoritative system instructions with JSON schema guidelines.
+  - Multi-turn conversation mapping: maps client-sent `role: "tool"` or `role: "function"` turns into user context turns, and converts prior assistant `tool_calls` into JSON context.
+  - Non-streaming parsing: extracts and validates JSON tool calls (`tool_calls`, `tool`/`parameters`, `function`/`parameters`) and transforms them into standard OpenAI `message.tool_calls` with generated IDs and `finish_reason: "tool_calls"`.
+  - Streaming SSE filtering (`EmulatedToolStreamFilter`): buffers candidate JSON tokens until completion and emits standard 3-event OpenAI tool calling sequences (`delta.tool_calls`, argument chunks, finish reason); immediately flushes non-tool natural conversation with zero latency.
+- Enabled `supports_tool_call=True` for all chat models across discovery endpoints (`/models`, `/v1/model/info`, WorkBuddy, OpenCode, models.dev schemas), allowing downstream agents to select Qwen and Llama for agentic execution.
+- Added comprehensive unit tests in `tests/test_tools.py` covering instruction generation, payload transformation, JSON block extraction, and streaming filters.
+
 ## [1.1.1] - 2026-09-18
 
 ### Documentation & Verification

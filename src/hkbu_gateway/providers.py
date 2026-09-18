@@ -6,6 +6,12 @@ import httpx
 
 from .config import Settings
 from .registry import find_model
+from .tools import (
+    EmulatedToolStreamFilter,
+    extract_tool_calls,
+    is_tool_emulation_required,
+    prepare_emulated_payload,
+)
 
 
 class UpstreamError(RuntimeError):
@@ -121,6 +127,11 @@ class HKBUProvider:
     async def chat(
         self, model: str, payload: dict[str, Any], api_key: str | None = None
     ) -> httpx.Response:
+        emulate = is_tool_emulation_required(model, payload)
+        original_tools: list[dict[str, Any]] = []
+        if emulate:
+            payload, original_tools = prepare_emulated_payload(payload)
+
         response = await self.client.post(
             self._url(model, "chat/completions"),
             headers=self._headers(api_key),
@@ -128,6 +139,27 @@ class HKBUProvider:
         )
         if response.is_error:
             raise UpstreamError(response.status_code, response.text[:2000])
+
+        if emulate and original_tools:
+            try:
+                data = response.json()
+                choices = data.get("choices", [])
+                if choices and isinstance(choices, list):
+                    msg = choices[0].get("message", {})
+                    content = msg.get("content") or ""
+                    tool_calls = extract_tool_calls(content, original_tools)
+                    if tool_calls:
+                        msg["tool_calls"] = tool_calls
+                        msg["content"] = None
+                        choices[0]["finish_reason"] = "tool_calls"
+                return httpx.Response(
+                    status_code=response.status_code,
+                    headers=response.headers,
+                    content=json.dumps(data).encode("utf-8"),
+                    request=response.request,
+                )
+            except Exception:
+                return response
         return response
 
     async def embeddings(
@@ -145,6 +177,13 @@ class HKBUProvider:
     async def chat_stream(
         self, model: str, payload: dict[str, Any], api_key: str | None = None
     ) -> AsyncIterator[bytes]:
+        emulate = is_tool_emulation_required(model, payload)
+        original_tools: list[dict[str, Any]] = []
+        tool_stream_filter: EmulatedToolStreamFilter | None = None
+        if emulate:
+            payload, original_tools = prepare_emulated_payload(payload)
+            tool_stream_filter = EmulatedToolStreamFilter(original_tools, model)
+
         think_filter = ThinkStreamFilter()
         last_chunk_template: dict[str, Any] | None = None
 
@@ -172,6 +211,13 @@ class HKBUProvider:
                 async for line in response.aiter_lines():
                     if not line:
                         yield b"\n"
+                        continue
+
+                    if emulate and tool_stream_filter:
+                        for chunk_bytes in tool_stream_filter.process_chunk(line):
+                            yield chunk_bytes
+                        if line.strip() == "data: [DONE]":
+                            return
                         continue
 
                     if not line.startswith("data: "):
@@ -221,6 +267,10 @@ class HKBUProvider:
                         yield f"{line}\n".encode()
                     except Exception:
                         yield f"{line}\n".encode()
+
+                if emulate and tool_stream_filter and tool_stream_filter.buffer:
+                    for chunk_bytes in tool_stream_filter.flush_done():
+                        yield chunk_bytes
 
         except Exception as exc:
             error_json = json.dumps({

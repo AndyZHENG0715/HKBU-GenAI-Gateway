@@ -63,20 +63,30 @@ In the official Swagger documentation files saved under `HKBU GenAI Platform/`:
   > ***Supported for: Azure OpenAI GPT (streaming + non‑streaming), Gemini (non‑streaming). Other providers are currently gated.***"
   This notice is omitted on the Qwen, Llama, and DeepSeek documentation pages.
 
-### 2. Empirical Verification Across All Models
+### 2. Empirical Verification & Gateway Emulation (v1.2.0)
 Live tests against the upstream HKBU platform (`https://genai.hkbu.edu.hk/api/v0/rest`) with function tools provided the following empirical results:
 
-| Model | Provider | Native `tool_calls` | `finish_reason` | Runtime Behavior | Gateway `supportsToolCall` |
+| Model | Provider | Native Upstream `tool_calls` | Gateway Emulated `tool_calls` | Client `supportsToolCall` | Emulation Strategy |
 | --- | --- | --- | --- | --- | --- |
-| `gpt-5`, `gpt-4.1`, `gpt-4.1-mini`, `o1`, `o3-mini` | Azure OpenAI | **Yes** (stream + non-stream) | `tool_calls` | Fully conforms to standard OpenAI tool calling specification. | `true` |
-| `gemini-2.5-pro`, `gemini-2.5-flash` | Vertex AI | **Yes** (non-stream) | `STOP` (normalized to `tool_calls`) | Returns structured `tool_calls`; gateway normalizes uppercase `finish_reason` for client compatibility. | `true` |
-| `deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash` | DeepSeek | **Yes** (non-stream) | `tool_calls` | Returns structured `tool_calls` while also outputting `<think>` reasoning blocks. | `true` |
-| `qwen3-max`, `qwen-plus` | Alibaba Cloud | **No** (Gated / ignored) | `stop` | Upstream gateway strips or ignores `tools`. The model responds in conversational text explaining it cannot execute functions. `tool_calls` is `null`. | `false` |
-| `llama-4-maverick` | Vertex AI | **No** (Unparsed raw text) | `stop` | Upstream does not extract tool calls into `message.tool_calls`. Model generates raw string text like `function_call: get_current_weather(...)` into `content`. `tool_calls` is `null`. | `false` |
+| `gpt-5`, `gpt-4.1`, `gpt-4.1-mini`, `o1`, `o3-mini` | Azure OpenAI | **Yes** (stream + non-stream) | N/A (Native) | `true` | Native upstream OpenAI tool calling. |
+| `gemini-2.5-pro`, `gemini-2.5-flash` | Vertex AI | **Yes** (non-stream) | N/A (Native) | `true` | Native upstream with uppercase `STOP` normalized to `tool_calls`. |
+| `deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash` | DeepSeek | **Yes** (non-stream) | N/A (Native) | `true` | Native upstream with `<think>` blocks cleanly separated into `reasoning_content`. |
+| `qwen3-max`, `qwen-plus` | Alibaba Cloud | **No** (Gated upstream) | **Yes** (stream + non-stream) | `true` | Gateway Prompt-Based Emulation Adapter (`tools.py`). Injects tool schema into system prompt, strips top-level tools, and parses structured output into OpenAI `tool_calls`. |
+| `llama-4-maverick` | Vertex AI | **No** (Gated upstream) | **Yes** (stream + non-stream) | `true` | Gateway Prompt-Based Emulation Adapter (`tools.py`). Injects tool schema into system prompt, translates tool result turns, and converts model output into OpenAI `tool_calls`. |
 
-### 3. Gateway Design Decision
-By correctly reporting `supportsToolCall: false` / `tool_call: false` for `qwen` and `llama` in `/models` and `/v1/model/info`:
-1. Agent harnesses (such as Tencent WorkBuddy, OpenCode, Claude Code, Cursor, Dify) know not to rely on native OpenAI `tool_calls` for Qwen and Llama.
-2. The harness can automatically apply prompt-based tool formatting or prompt the user to choose GPT-4.1, Gemini, or DeepSeek for agentic execution.
-3. This prevents unhandled null errors, schema parsing exceptions, or endless tool-calling retry loops in downstream client applications.
+### 3. Tool Calling Emulation Architecture (`tools.py`)
+To unlock full tool calling capabilities for Qwen and Llama across agent harnesses (such as Tencent WorkBuddy, Cursor, Cline, OpenCode, and Dify):
+1. **Request Translation**: When a client sends `tools: [...]` for a model where `native_tool_call` is false, the gateway:
+   - Formats the tools JSON schemas into an authoritative system prompt instruction.
+   - Converts any client-sent `role: "tool"` or `role: "function"` response turns into contextual user turns (`[Tool Result for {name}]: ...`).
+   - Converts previous assistant messages containing `tool_calls` into assistant turns containing the JSON call block.
+   - Pops `tools` and `tool_choice` from the payload sent to HKBU to avoid upstream errors or parameter dropping.
+2. **Response Translation (Non-Streaming)**:
+   - The gateway parses the model's text response for JSON function call blocks (`tool_calls`, `name`/`arguments`, `tool`/`parameters`, or `function`/`parameters`).
+   - Normalizes valid calls into standard OpenAI `choices[0].message.tool_calls` with generated `call_...` IDs.
+   - Sets `finish_reason: "tool_calls"` and clears `content`.
+3. **Response Translation (Streaming SSE)**:
+   - `EmulatedToolStreamFilter` buffers candidate JSON tool-calling tokens until completion, then emits the exact 3-chunk OpenAI tool calling event sequence (`delta.tool_calls` declaration, arguments chunk, and `finish_reason: "tool_calls"`).
+   - If the initial tokens are natural conversational text, it immediately flushes the buffer as `delta.content` with zero latency overhead.
+
 

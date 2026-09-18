@@ -41,17 +41,21 @@ def test_models_endpoints_without_auth(client):
         assert gpt["supportsVision"] is True
         assert gpt["contextWindow"] == 1_047_576
 
-        # Check Qwen capabilities (gated upstream)
+        # Check Qwen capabilities (tool calling supported via emulation)
         qwen = next(m for m in data["data"] if m["id"] == "qwen3-max")
-        assert qwen["supportsToolCall"] is False
-        assert qwen["tool_call"] is False
-        assert qwen["capabilities"]["function_calling"] is False
+        assert qwen["supportsToolCall"] is True
+        assert qwen["tool_call"] is True
+        assert qwen["capabilities"]["function_calling"] is True
+        assert qwen["tool_call_emulated"] is True
+        assert qwen["native_tool_call"] is False
 
-        # Check Llama capabilities (unparsed upstream)
+        # Check Llama capabilities (tool calling supported via emulation)
         llama = next(m for m in data["data"] if m["id"] == "llama-4-maverick")
-        assert llama["supportsToolCall"] is False
-        assert llama["tool_call"] is False
-        assert llama["capabilities"]["function_calling"] is False
+        assert llama["supportsToolCall"] is True
+        assert llama["tool_call"] is True
+        assert llama["capabilities"]["function_calling"] is True
+        assert llama["tool_call_emulated"] is True
+        assert llama["native_tool_call"] is False
 
 
 def test_single_model_endpoint(client):
