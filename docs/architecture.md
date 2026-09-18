@@ -2,31 +2,33 @@
 
 ## Goals
 
-The gateway exposes the small, stable subset of the OpenAI HTTP protocol that
-most student tools already understand:
+The gateway exposes standard OpenAI and agent-compatible HTTP protocols that
+developer tools, coding assistants, and desktop harnesses understand:
 
 ```text
-GET  /v1/models
-POST /v1/chat/completions
-POST /v1/embeddings
+GET  /v1/models, /models, /v1/model, /model, /api/v1/models, /v1/model/info
+POST /v1/chat/completions, /chat/completions
+POST /v1/embeddings, /embeddings
 ```
 
-The client sends a gateway API key. The gateway authenticates that key, selects
-an adapter from the requested `model`, adds the configured upstream
-credentials, and normalizes the response.
+The client sends a gateway API key (or connects unauthenticated for model discovery).
+The gateway authenticates requests, matches the requested `model`, applies tool
+emulation or reasoning extraction adapters as needed, adds upstream credentials,
+and normalizes responses into standard OpenAI formats.
 
 ```text
-OpenAI client -> gateway auth -> model registry -> provider adapter -> HKBU
-                                      |                  |
-                                      +-- OpenAI shape <-+
+OpenAI / Agent client -> gateway auth -> model registry -> tools adapter / think filter -> HKBU upstream
+                                                |                      |
+                                                +-- OpenAI shape <-----+
 ```
 
 ## Boundaries
 
-- `registry.py` owns model metadata and provider lookup.
+- `registry.py` owns model metadata, context window specs, and provider ability flags.
+- `tools.py` owns prompt-based tool calling emulation, JSON schema serialization, multi-turn tool result translation, and `EmulatedToolStreamFilter` for streaming SSE tool calls.
+- `providers.py` owns upstream URL routing, authentication headers, `ThinkStreamFilter` for multi-tag reasoning extraction, and upstream streaming lifecycles.
 - `protocol.py` owns request validation and OpenAI-shaped response helpers.
-- `providers.py` owns upstream URL and header construction.
-- `app.py` owns HTTP concerns and error mapping.
+- `app.py` owns HTTP routing, static assets, and exception mapping.
 - `credentials.py` owns the encrypted SQLite credential store (`CredentialStore`).
 - Route handlers interact with `CredentialStore` via structured methods and never execute raw SQL directly.
 

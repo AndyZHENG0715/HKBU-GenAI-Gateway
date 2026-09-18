@@ -9,14 +9,21 @@ Students and researchers can convert their university platform key into standard
 ## ✨ Features
 
 - **🔑 1-Click Key Conversion**: Validate student HKBU Platform keys and generate standard `Bearer` tokens compatible with any OpenAI SDK or client application.
+- **🛠️ Universal Tool Calling (Function Calling)**:
+  - Full OpenAI `tools: [...]` and `tool_calls` support for **all models** in both streaming and non-streaming modes.
+  - Native passthrough for Azure GPT, Google Gemini, and DeepSeek.
+  - Automatic **Prompt-Based Tool Emulation Adapter** (`tools.py`) for Alibaba Cloud Qwen (`qwen3-max`, `qwen-plus`) and Google Vertex AI Llama (`llama-4-maverick`), seamlessly converting client tool schemas and unparsed upstream responses into standard OpenAI `tool_calls`.
+- **🔍 Universal Model Discovery & Capabilities**:
+  - Exposes `/v1/models`, `/models`, `/v1/model`, `/model`, OpenRouter-compatible `/api/v1/models`, and LiteLLM-compatible `/v1/model/info`.
+  - Comprehensive model capabilities metadata following [models.dev](https://models.dev) and Tencent WorkBuddy schemas (`supportsToolCall`, `supportsReasoning`, `supportsVision`, `contextWindow`, `maxTokens`, `tool_call`, `reasoning`, `attachment`, `limit`, `capabilities`).
 - **💬 Interactive Web Playground**:
   - Test any university model directly in the browser with real-time SSE streaming.
-  - **🧠 DeepSeek Reasoning Accordion**: Collapsible thought process container supporting both `delta.reasoning_content` deltas and `<think>` tags.
+  - **🧠 DeepSeek & Multi-Tag Reasoning Accordion**: Collapsible thought process container supporting both `delta.reasoning_content` deltas and `<think>`, `<thought>`, `<thinking>`, `<reasoning>` tags.
   - **📝 Rich Markdown Rendering**: Full GitHub Flavored Markdown support with tables, blockquotes, and syntax-highlighted code blocks with 1-click copy.
   - **⚡ Message Actions**: Copy message text, edit user prompts with branch regeneration, and retry assistant responses.
   - **📂 Multi-Turn Chat History**: Persistent conversation sessions stored in `localStorage` with "+ New Conversation" and session switching.
 - **🚀 Zero-Configuration Startup**: If `HKBU_GATEWAY_ENCRYPTION_KEY` is not set, a Fernet key (`hkbu_gateway.key`) is automatically generated and persisted next to the database. Compatible out-of-the-box with `railway up` and headless deployments.
-- **🛠️ Client Tool Presets**: Ready-to-copy configurations for Chatbox, NextChat, Cherry Studio, Cursor, VS Code / Cline, Dify, Open WebUI, LibreChat, and Python.
+- **🛠️ Client Tool Presets**: Ready-to-copy configurations for **Tencent WorkBuddy**, Cursor, VS Code / Cline, Dify, Open WebUI, LibreChat, Chatbox, NextChat, Cherry Studio, and Python.
 - **🛡️ Secure at Rest**: Upstream university keys are encrypted with Fernet before SQLite persistence; the upstream key is never exposed to `/v1/*` clients.
 - **🌐 Dynamic Base URL**: Automatically adapts to deployment origin (e.g. `https://byok.aitutor.ink/v1` or `/hkbuapi4agent.html`), never hardcoding `localhost`.
 
