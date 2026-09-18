@@ -21,7 +21,7 @@ from . import __version__
 from .config import Settings
 from .credentials import Credential, CredentialStore
 from .protocol import ChatCompletionRequest, EmbeddingRequest, openai_error
-from .providers import HKBUProvider, UpstreamError
+from .providers import HKBUProvider, UpstreamError, REASONING_TAG_PAIRS
 from .registry import MODELS, find_model
 
 
@@ -306,11 +306,16 @@ async def chat_completions(
             for choice in data.get("choices", []):
                 msg = choice.get("message", {})
                 content = msg.get("content") or ""
-                if "<think>" in content and "</think>" in content:
-                    pre, rest = content.split("<think>", 1)
-                    think_body, post = rest.split("</think>", 1)
-                    msg["reasoning_content"] = think_body.strip()
-                    msg["content"] = (pre + post.lstrip("\n")).strip()
+                if msg.get("tool_calls"):
+                    if choice.get("finish_reason") in ("STOP", "stop", None):
+                        choice["finish_reason"] = "tool_calls"
+                for open_tag, close_tag in REASONING_TAG_PAIRS:
+                    if open_tag in content and close_tag in content:
+                        pre, rest = content.split(open_tag, 1)
+                        think_body, post = rest.split(close_tag, 1)
+                        msg["reasoning_content"] = think_body.strip()
+                        msg["content"] = (pre + post.lstrip("\n")).strip()
+                        break
         return JSONResponse(content=data)
     except (UpstreamError, httpx.HTTPError) as exc:
         status = exc.status_code if isinstance(exc, UpstreamError) else 502

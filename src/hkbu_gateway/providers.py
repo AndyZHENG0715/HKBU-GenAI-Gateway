@@ -15,9 +15,18 @@ class UpstreamError(RuntimeError):
         self.detail = detail
 
 
+REASONING_TAG_PAIRS = [
+    ("<think>", "</think>"),
+    ("<thought>", "</thought>"),
+    ("<thinking>", "</thinking>"),
+    ("<reasoning>", "</reasoning>"),
+]
+
+
 class ThinkStreamFilter:
     def __init__(self):
         self.in_think = False
+        self.closing_tag = ""
         self.buffer = ""
 
     def process(self, content: str) -> list[tuple[str, str]]:
@@ -26,34 +35,49 @@ class ThinkStreamFilter:
         results: list[tuple[str, str]] = []
 
         if not self.in_think:
-            if "<think>" in text:
-                pre, post = text.split("<think>", 1)
+            matched_pair = None
+            earliest_idx = -1
+            for open_tag, close_tag in REASONING_TAG_PAIRS:
+                idx = text.find(open_tag)
+                if idx != -1 and (earliest_idx == -1 or idx < earliest_idx):
+                    earliest_idx = idx
+                    matched_pair = (open_tag, close_tag)
+
+            if matched_pair:
+                open_tag, close_tag = matched_pair
+                pre, post = text.split(open_tag, 1)
                 if pre:
                     results.append(("content", pre))
                 self.in_think = True
+                self.closing_tag = close_tag
                 text = post
             else:
-                for i in range(len("<think>") - 1, 0, -1):
-                    if text.endswith("<think>"[:i]):
-                        self.buffer = text[-i:]
-                        text = text[:-i]
-                        break
+                longest_partial = 0
+                for open_tag, _ in REASONING_TAG_PAIRS:
+                    for i in range(len(open_tag) - 1, 0, -1):
+                        if text.endswith(open_tag[:i]) and i > longest_partial:
+                            longest_partial = i
+                if longest_partial > 0:
+                    self.buffer = text[-longest_partial:]
+                    text = text[:-longest_partial]
                 if text:
                     results.append(("content", text))
                 return results
 
         if self.in_think:
-            if "</think>" in text:
-                think_body, post = text.split("</think>", 1)
+            close_tag = self.closing_tag or "</think>"
+            if close_tag in text:
+                think_body, post = text.split(close_tag, 1)
                 if think_body:
                     results.append(("reasoning_content", think_body))
                 self.in_think = False
+                self.closing_tag = ""
                 post = post.lstrip("\n")
                 if post:
                     results.append(("content", post))
             else:
-                for i in range(len("</think>") - 1, 0, -1):
-                    if text.endswith("</think>"[:i]):
+                for i in range(len(close_tag) - 1, 0, -1):
+                    if text.endswith(close_tag[:i]):
                         self.buffer = text[-i:]
                         text = text[:-i]
                         break

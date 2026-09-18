@@ -5,19 +5,21 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.1] - 2026-09-18
+## [1.1.0] - 2026-09-18
 
 ### Added
 
-- Model discovery endpoints: `@app.get("/models")`, `@app.get("/model")`, `@app.get("/v1/model")`, and single-model lookup `@app.get("/models/{id}")`.
+- Model discovery endpoints: `@app.get("/models")`, `@app.get("/model")`, `@app.get("/v1/model")`, `@app.get("/api/v1/models")` (OpenRouter standard), `@app.get("/v1/model/info")` & `@app.get("/model/info")` (LiteLLM standard), and single-model lookup `@app.get("/models/{id}")`.
 - Rich model ability metadata aligned with [models.dev](https://models.dev) and Tencent WorkBuddy schemas (`supportsToolCall`, `supportsReasoning`, `supportsVision`, `contextWindow`, `maxTokens`, `tool_call`, `reasoning`, `limit`, `capabilities`).
-- Automatic `<think>` tag extraction in both streaming (`ThinkStreamFilter`) and non-streaming responses, converting raw upstream `<think>` blocks into standard `reasoning_content` to trigger native collapsible thought UIs in agent harnesses.
+- Universal multi-tag reasoning extraction supporting `<think>`, `<thought>`, `<thinking>`, and `<reasoning>` in both streaming (`ThinkStreamFilter`) and non-streaming responses, converting raw upstream thought blocks into standard `reasoning_content` to trigger native collapsible thought UIs across all agent harnesses.
 - Tencent WorkBuddy client preset with 1-click GUI setup guide and pre-filled `~/.workbuddy/models.json` configuration snippet.
 - Route aliases for `POST /chat/completions` and `POST /embeddings` without `/v1` prefix.
 
 ### Fixed
 
 - Public model discovery: allowed unauthenticated discovery on `/models` and `/v1/models` so tools can probe available models during initial provider setup without 401 errors.
+- Tool calling finish reason normalization: automatically normalized upstream `finish_reason` to `"tool_calls"` when tools are invoked (resolving Gemini's uppercase `"STOP"`).
+- Accurate model capabilities: verified tool-calling support across all upstream models and set `supports_tool_call=False` for Qwen and Llama models where upstream HKBU adapters ignore tools.
 
 ## [1.0.0] - 2026-09-18
 

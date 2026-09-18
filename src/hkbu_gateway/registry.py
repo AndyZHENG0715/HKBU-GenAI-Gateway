@@ -69,9 +69,9 @@ MODELS = (
     Model("deepseek-v4-flash", "deepseek", "chat", "2024-05-01-preview", name="DeepSeek V4 Flash", context_window=1000000, max_output=384000, supports_tool_call=True, supports_reasoning=True, supports_vision=False),
     Model("gemini-2.5-pro", "gemini", "chat", None, name="Gemini 2.5 Pro", context_window=2000000, max_output=65536, supports_tool_call=True, supports_reasoning=True, supports_vision=True),
     Model("gemini-2.5-flash", "gemini", "chat", None, name="Gemini 2.5 Flash", context_window=1000000, max_output=65536, supports_tool_call=True, supports_reasoning=True, supports_vision=True),
-    Model("qwen3-max", "qwen", "chat", "v1", name="Qwen3 Max", context_window=1000000, max_output=65536, supports_tool_call=True, supports_reasoning=True, supports_vision=False),
-    Model("qwen-plus", "qwen", "chat", "v1", name="Qwen Plus", context_window=131072, max_output=8192, supports_tool_call=True, supports_reasoning=False, supports_vision=False),
-    Model("llama-4-maverick", "llama", "chat", "20240723", name="Llama 4 Maverick", context_window=1000000, max_output=32768, supports_tool_call=True, supports_reasoning=False, supports_vision=False),
+    Model("qwen3-max", "qwen", "chat", "v1", name="Qwen3 Max", context_window=1000000, max_output=65536, supports_tool_call=False, supports_reasoning=False, supports_vision=False),
+    Model("qwen-plus", "qwen", "chat", "v1", name="Qwen Plus", context_window=131072, max_output=8192, supports_tool_call=False, supports_reasoning=False, supports_vision=False),
+    Model("llama-4-maverick", "llama", "chat", "20240723", name="Llama 4 Maverick", context_window=1000000, max_output=32768, supports_tool_call=False, supports_reasoning=False, supports_vision=False),
     Model("text-embedding-3-large", "embeddings", "embedding", "2024-05-01-preview", name="Text Embedding 3 Large", context_window=8191, max_output=3072, supports_tool_call=False, supports_reasoning=False, supports_vision=False),
     Model("text-embedding-3-small", "embeddings", "embedding", "2024-05-01-preview", name="Text Embedding 3 Small", context_window=8191, max_output=1536, supports_tool_call=False, supports_reasoning=False, supports_vision=False),
 )
