@@ -14,7 +14,7 @@ def client(tmp_path, monkeypatch):
 
 
 def test_models_endpoints_without_auth(client):
-    endpoints = ["/v1/models", "/models", "/v1/model", "/model"]
+    endpoints = ["/v1/models", "/models", "/v1/model", "/model", "/api/v1/models"]
     for ep in endpoints:
         resp = client.get(ep)
         assert resp.status_code == 200
@@ -80,3 +80,16 @@ def test_think_stream_filter():
 
     assert reasoning == "\nLet me solve this step by step.\n"
     assert content == "Here is the answer: 42."
+
+
+def test_litellm_model_info(client):
+    for ep in ["/v1/model/info", "/model/info"]:
+        resp = client.get(ep)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "data" in data
+        ds = next(m for m in data["data"] if m["model_name"] == "deepseek-v4-flash")
+        assert ds["model_info"]["supports_function_calling"] is True
+        assert ds["model_info"]["supports_reasoning"] is True
+        assert ds["model_info"]["max_input_tokens"] == 1_000_000
+

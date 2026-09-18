@@ -210,6 +210,7 @@ def optional_gateway_key(
 @app.get("/models")
 @app.get("/v1/model")
 @app.get("/model")
+@app.get("/api/v1/models")
 async def list_models(
     credential: Credential | None = Depends(optional_gateway_key),
 ) -> dict[str, Any]:
@@ -217,6 +218,36 @@ async def list_models(
     return {
         "object": "list",
         "data": [model.to_dict(created=now) for model in MODELS],
+    }
+
+
+@app.get("/v1/model/info")
+@app.get("/model/info")
+async def model_info(
+    credential: Credential | None = Depends(optional_gateway_key),
+) -> dict[str, Any]:
+    return {
+        "data": [
+            {
+                "model_name": model.id,
+                "litellm_params": {
+                    "model": model.id,
+                },
+                "model_info": {
+                    "id": model.id,
+                    "mode": model.kind,
+                    "max_tokens": model.max_output,
+                    "max_input_tokens": model.context_window,
+                    "supports_function_calling": model.supports_tool_call,
+                    "supports_parallel_function_calling": model.supports_tool_call,
+                    "supports_vision": model.supports_vision,
+                    "supports_reasoning": model.supports_reasoning,
+                    "supports_response_schema": model.supports_structured_output,
+                    "supports_system_messages": True,
+                },
+            }
+            for model in MODELS
+        ]
     }
 
 
