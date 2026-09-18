@@ -7,6 +7,15 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-18
+
+### Fixed
+
+- Stream error handling: yield structured SSE error events instead of raising unhandled ASGI exceptions and dropping TCP streams (`network error`).
+- Empty message content validation: guarantee `content` is always present for every message in `upstream_payload` to satisfy HKBU gateway schema requirements.
+- Message action buttons: made `Edit` and `Retry` action buttons permanently visible beneath messages with distinct icons and text.
+- Added in-bubble Error Card with direct `Retry Message` and `Try Gemini 2.5 Flash` quick-switch buttons when upstream models are unavailable.
+
 ## [0.3.1] - 2026-09-18
 
 ### Added

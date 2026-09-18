@@ -15,6 +15,7 @@ import {
   MessageSquare,
   History,
   Sparkles,
+  Zap,
 } from 'lucide-react';
 import { SUPPORTED_MODELS } from '../lib/models';
 import { streamChatCompletion, StreamChunk } from '../lib/api';
@@ -27,6 +28,7 @@ export interface PlaygroundMessage {
   content: string;
   reasoning?: string;
   isThinking?: boolean;
+  error?: string;
   timestamp?: number;
 }
 
@@ -53,7 +55,7 @@ const createDefaultSession = (): ChatSession => ({
       id: `msg-${Date.now()}-welcome`,
       role: 'assistant',
       content:
-        'Hello! I am connected to the HKBU GenAI Gateway. You can chat directly with any model here—with rich markdown, deep reasoning thought processes, and full conversation history. What would you like to explore?',
+        'Hello! I am connected to the HKBU GenAI Gateway. You can test any model here—with rich markdown, deep reasoning thought processes, and full conversation history. How can I help you today?',
       timestamp: Date.now(),
     },
   ],
@@ -207,7 +209,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
     abortControllerRef.current = controller;
 
     // Filter valid conversation history to send upstream
-    // Exclude lone initial greeting if no user turn came before it
+    // Include messages before the assistant placeholder that have non-empty content
     const historyCandidates = allMessages
       .filter((m) => m.id !== assistantMsgId)
       .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim());
@@ -217,7 +219,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
 
     const payloadMessages = validHistory.map((m) => ({
       role: m.role,
-      content: m.content,
+      content: m.content || '',
     }));
 
     let rawReasoning = '';
@@ -236,7 +238,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
           rawContent += chunk.content;
         }
 
-        // Check if content contains <think> tags (DeepSeek R1 raw output)
+        // Check if content contains <think> tags (DeepSeek raw output)
         let parsedReasoning = rawReasoning;
         let parsedContent = rawContent;
         let currentlyThinking = false;
@@ -256,7 +258,6 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
             currentlyThinking = true;
           }
         } else {
-          // If reasoning came from delta.reasoning_content
           if (rawReasoning && !rawContent) {
             currentlyThinking = true;
           } else {
@@ -274,18 +275,22 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                   content: parsedContent,
                   reasoning: parsedReasoning,
                   isThinking: currentlyThinking,
+                  error: undefined,
                 }
               : m
           ),
         }));
       },
       onError: (err) => {
-        setError(err.message);
+        const errorMsg = err.message || 'Failed to complete request';
+        setError(errorMsg);
         setIsStreaming(false);
         updateCurrentSession((session) => ({
           ...session,
           messages: session.messages.map((m) =>
-            m.id === assistantMsgId ? { ...m, isThinking: false } : m
+            m.id === assistantMsgId
+              ? { ...m, isThinking: false, error: errorMsg }
+              : m
           ),
         }));
       },
@@ -324,7 +329,6 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
       timestamp: Date.now(),
     };
 
-    // Auto-update session title if it is the first user message
     const isFirstUserMessage = !currentSession.messages.some((m) => m.role === 'user');
     const newTitle = isFirstUserMessage
       ? text.slice(0, 30) + (text.length > 30 ? '...' : '')
@@ -355,20 +359,30 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
     }
   };
 
-  // Retry / Regenerate message
-  const handleRetry = async (assistantMsgIndex: number) => {
+  // Retry / Regenerate assistant message
+  const handleRetry = async (assistantMsgIndex: number, modelOverride?: string) => {
     if (isStreaming) return;
 
     const msgs = [...currentSession.messages];
-    // Find preceding user message
     let precedingUserIdx = assistantMsgIndex - 1;
     while (precedingUserIdx >= 0 && msgs[precedingUserIdx].role !== 'user') {
       precedingUserIdx--;
     }
 
+    if (precedingUserIdx < 0) {
+      // If no preceding user message, find the last user message in the list
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === 'user') {
+          precedingUserIdx = i;
+          break;
+        }
+      }
+    }
+
     if (precedingUserIdx < 0) return;
 
-    // Truncate to the user message
+    const targetModel = modelOverride || selectedModel;
+
     const truncated = msgs.slice(0, precedingUserIdx + 1);
     const newAssistantMsgId = `msg-${Date.now()}-assistant`;
     const newAssistantMsg: PlaygroundMessage = {
@@ -376,7 +390,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
       role: 'assistant',
       content: '',
       reasoning: '',
-      isThinking: selectedModel.toLowerCase().includes('deepseek'),
+      isThinking: targetModel.toLowerCase().includes('deepseek'),
       timestamp: Date.now(),
     };
 
@@ -384,11 +398,13 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
 
     updateCurrentSession((s) => ({
       ...s,
+      model: targetModel,
       updatedAt: Date.now(),
       messages: updatedMessages,
     }));
 
-    await executeCompletion(updatedMessages, newAssistantMsgId, selectedModel);
+    setError(null);
+    await executeCompletion(updatedMessages, newAssistantMsgId, targetModel);
   };
 
   // Edit user message
@@ -405,7 +421,6 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
     const userMsg = msgs[msgIndex];
     if (!userMsg || userMsg.role !== 'user') return;
 
-    // Truncate everything after this message
     const truncated = msgs.slice(0, msgIndex);
     const updatedUserMsg: PlaygroundMessage = {
       ...userMsg,
@@ -434,6 +449,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
       messages: updatedMessages,
     }));
 
+    setError(null);
     await executeCompletion(updatedMessages, assistantMsgId, selectedModel);
   };
 
@@ -540,19 +556,30 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
         </div>
       </div>
 
-      {/* Error Alert Banner */}
+      {/* Error Alert Banner with prominent Retry Button */}
       {error && (
-        <div className="px-4 sm:px-6 py-2.5 bg-red-50 dark:bg-red-950/60 border-b border-red-200 dark:border-red-900 text-xs text-red-700 dark:text-red-300 flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-2.5 bg-red-50 dark:bg-red-950/70 border-b border-red-200 dark:border-red-900 text-xs text-red-700 dark:text-red-300 flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center space-x-2">
             <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-            <span>{error}</span>
+            <span className="break-words font-medium">{error}</span>
           </div>
-          <button
-            onClick={() => setError(null)}
-            className="text-red-500 hover:text-red-700 font-bold ml-2 cursor-pointer"
-          >
-            ×
-          </button>
+          <div className="flex items-center space-x-2 ml-auto">
+            <button
+              onClick={() => handleRetry(currentSession.messages.length - 1)}
+              disabled={isStreaming}
+              className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md text-[11px] font-semibold flex items-center space-x-1 shadow-sm transition-colors cursor-pointer"
+            >
+              <RotateCw className="w-3 h-3" />
+              <span>Retry</span>
+            </button>
+            <button
+              onClick={() => setError(null)}
+              className="text-red-500 hover:text-red-700 font-bold px-1.5 py-0.5 cursor-pointer"
+              title="Dismiss"
+            >
+              ×
+            </button>
+          </div>
         </div>
       )}
 
@@ -624,7 +651,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
         {/* Chat Area */}
         <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-slate-900">
           {/* Messages Scroll Area */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
             {currentSession.messages.map((msg, index) => {
               const isUser = msg.role === 'user';
               const isEditing = editingMsgId === msg.id;
@@ -638,7 +665,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                 >
                   {/* Avatar */}
                   <div
-                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm mt-0.5 ${
                       isUser
                         ? 'bg-hkbu-blue-700 text-white'
                         : 'bg-slate-100 dark:bg-slate-800 text-hkbu-blue-700 dark:text-hkbu-blue-300 border border-slate-200 dark:border-slate-700'
@@ -647,123 +674,182 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                     {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                   </div>
 
-                  {/* Message Bubble */}
-                  <div
-                    className={`group relative max-w-[88%] sm:max-w-[80%] rounded-2xl p-4 text-sm leading-relaxed shadow-sm ${
-                      isUser
-                        ? 'bg-hkbu-blue-700 text-white rounded-tr-none'
-                        : 'bg-slate-50 dark:bg-slate-800/90 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 rounded-tl-none'
-                    }`}
-                  >
-                    {/* Inline User Editing Mode */}
-                    {isEditing ? (
-                      <div className="space-y-2 min-w-[260px] sm:min-w-[340px]">
-                        <textarea
-                          value={editInput}
-                          onChange={(e) => setEditInput(e.target.value)}
-                          rows={3}
-                          className="w-full text-xs sm:text-sm p-2.5 rounded-lg bg-white dark:bg-slate-850 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-1 focus:ring-hkbu-blue-500"
-                        />
-                        <div className="flex items-center justify-end space-x-2">
-                          <button
-                            onClick={() => setEditingMsgId(null)}
-                            className="px-2.5 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={() => handleSaveEdit(index)}
-                            className="px-3 py-1 text-xs font-medium bg-hkbu-gold-500 hover:bg-hkbu-gold-400 text-slate-950 rounded shadow-sm transition-colors"
-                          >
-                            Save & Submit
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        {/* Thinking Process Accordion for DeepSeek / Reasoning models */}
-                        {!isUser && (msg.reasoning || msg.isThinking) && (
-                          <ThinkingBox
-                            reasoning={msg.reasoning || ''}
-                            isThinking={msg.isThinking}
+                  {/* Message Bubble + Action Toolbar Container */}
+                  <div className={`max-w-[88%] sm:max-w-[80%] flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+                    {/* Bubble */}
+                    <div
+                      className={`w-full rounded-2xl p-4 text-sm leading-relaxed shadow-sm ${
+                        isUser
+                          ? 'bg-hkbu-blue-700 text-white rounded-tr-none'
+                          : 'bg-slate-50 dark:bg-slate-800/90 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 rounded-tl-none'
+                      }`}
+                    >
+                      {/* Inline User Editing Mode */}
+                      {isEditing ? (
+                        <div className="space-y-2 min-w-[260px] sm:min-w-[340px]">
+                          <textarea
+                            value={editInput}
+                            onChange={(e) => setEditInput(e.target.value)}
+                            rows={3}
+                            className="w-full text-xs sm:text-sm p-2.5 rounded-lg bg-white dark:bg-slate-850 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-1 focus:ring-hkbu-blue-500"
                           />
-                        )}
-
-                        {/* Message Content with Rich Markdown Rendering */}
-                        {isUser ? (
-                          <div className="whitespace-pre-wrap break-words">{msg.content}</div>
-                        ) : (
-                          <div>
-                            {msg.content ? (
-                              <MarkdownRenderer content={msg.content} />
-                            ) : msg.isThinking ? (
-                              <div className="text-xs text-slate-400 dark:text-slate-500 italic flex items-center space-x-1.5 py-1">
-                                <Sparkles className="w-3.5 h-3.5 animate-spin text-hkbu-gold-500" />
-                                <span>Generating thoughts...</span>
-                              </div>
-                            ) : isStreaming && index === currentSession.messages.length - 1 ? (
-                              <span className="inline-block w-2 h-4 bg-hkbu-blue-500 animate-pulse ml-1 align-middle"></span>
-                            ) : null}
+                          <div className="flex items-center justify-end space-x-2">
+                            <button
+                              onClick={() => setEditingMsgId(null)}
+                              className="px-2.5 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleSaveEdit(index)}
+                              className="px-3 py-1 text-xs font-semibold bg-hkbu-gold-500 hover:bg-hkbu-gold-400 text-slate-950 rounded shadow-sm transition-colors cursor-pointer"
+                            >
+                              Save & Submit
+                            </button>
                           </div>
-                        )}
+                        </div>
+                      ) : (
+                        <>
+                          {/* Thinking Process Accordion for DeepSeek / Reasoning models */}
+                          {!isUser && (msg.reasoning || msg.isThinking) && (
+                            <ThinkingBox
+                              reasoning={msg.reasoning || ''}
+                              isThinking={msg.isThinking}
+                            />
+                          )}
 
-                        {/* Action Toolbar on hover */}
-                        <div
-                          className={`mt-2 pt-1 border-t border-slate-200/50 dark:border-slate-700/50 flex items-center justify-end space-x-1.5 text-xs opacity-0 group-hover:opacity-100 transition-opacity ${
-                            isUser ? 'text-white/80' : 'text-slate-400 dark:text-slate-400'
-                          }`}
-                        >
-                          {/* Copy Message Button */}
-                          <button
-                            onClick={() => handleCopyMessage(msg.id, msg.content)}
-                            type="button"
-                            className={`p-1 rounded transition-colors flex items-center space-x-1 ${
-                              isUser
-                                ? 'hover:bg-white/20 text-white'
-                                : 'hover:bg-slate-200/80 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200'
-                            }`}
-                            title="Copy message"
-                          >
-                            {copiedMsgId === msg.id ? (
-                              <>
-                                <Check className="w-3 h-3 text-emerald-400" />
-                                <span className="text-[10px] text-emerald-400">Copied</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3 h-3" />
-                                <span className="text-[10px]">Copy</span>
-                              </>
-                            )}
-                          </button>
+                          {/* Message Content with Rich Markdown Rendering */}
+                          {isUser ? (
+                            <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                          ) : (
+                            <div>
+                              {msg.content ? (
+                                <MarkdownRenderer content={msg.content} />
+                              ) : msg.isThinking ? (
+                                <div className="text-xs text-slate-400 dark:text-slate-500 italic flex items-center space-x-1.5 py-1">
+                                  <Sparkles className="w-3.5 h-3.5 animate-spin text-hkbu-gold-500" />
+                                  <span>Generating reasoning thoughts...</span>
+                                </div>
+                              ) : isStreaming && index === currentSession.messages.length - 1 ? (
+                                <span className="inline-block w-2 h-4 bg-hkbu-blue-500 animate-pulse ml-1 align-middle"></span>
+                              ) : null}
 
-                          {/* Edit button on User message */}
-                          {isUser && !isStreaming && (
+                              {/* Error Box inside Assistant bubble if generation failed */}
+                              {msg.error && (
+                                <div className="mt-2.5 p-3 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900/80 text-xs text-red-700 dark:text-red-300 space-y-2">
+                                  <div className="flex items-start space-x-2">
+                                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                      <p className="font-semibold">{msg.error}</p>
+                                      <p className="text-[11px] text-red-600/90 dark:text-red-400/90 mt-0.5">
+                                        {selectedModel.toLowerCase().includes('deepseek')
+                                          ? 'HKBU DeepSeek deployment may be overloaded. Click Retry or switch to Gemini 2.5 Flash below.'
+                                          : 'You can retry this prompt now.'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                                    <button
+                                      onClick={() => handleRetry(index)}
+                                      disabled={isStreaming}
+                                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white flex items-center space-x-1 shadow-sm transition-colors cursor-pointer"
+                                    >
+                                      <RotateCw className="w-3 h-3" />
+                                      <span>Retry Message</span>
+                                    </button>
+                                    {selectedModel.toLowerCase().includes('deepseek') && (
+                                      <button
+                                        onClick={() => {
+                                          handleModelChange('gemini-2.5-flash');
+                                          handleRetry(index, 'gemini-2.5-flash');
+                                        }}
+                                        disabled={isStreaming}
+                                        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750 flex items-center space-x-1 transition-colors cursor-pointer shadow-xs"
+                                      >
+                                        <Zap className="w-3 h-3 text-hkbu-gold-500" />
+                                        <span>Try Gemini 2.5 Flash</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+
+                    {/* Prominent Action Toolbar placed cleanly below each bubble */}
+                    {!isEditing && (
+                      <div className="mt-1.5 flex items-center space-x-2 text-xs">
+                        {isUser ? (
+                          /* User Actions: Edit & Copy */
+                          <div className="flex items-center space-x-2">
                             <button
                               onClick={() => handleStartEdit(msg)}
+                              disabled={isStreaming}
                               type="button"
-                              className="p-1 rounded hover:bg-white/20 text-white transition-colors flex items-center space-x-1"
-                              title="Edit message"
+                              className="px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-500 hover:text-hkbu-blue-700 dark:text-slate-400 dark:hover:text-hkbu-blue-300 bg-slate-100/80 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 flex items-center space-x-1 transition-colors cursor-pointer shadow-2xs"
+                              title="Edit prompt"
                             >
-                              <Edit3 className="w-3 h-3" />
-                              <span className="text-[10px]">Edit</span>
+                              <Edit3 className="w-3 h-3 text-hkbu-blue-600 dark:text-hkbu-blue-400" />
+                              <span>Edit</span>
                             </button>
-                          )}
 
-                          {/* Retry button on Assistant message */}
-                          {!isUser && !isStreaming && (
+                            <button
+                              onClick={() => handleCopyMessage(msg.id, msg.content)}
+                              type="button"
+                              className="px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 bg-slate-100/80 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 flex items-center space-x-1 transition-colors cursor-pointer shadow-2xs"
+                              title="Copy prompt"
+                            >
+                              {copiedMsgId === msg.id ? (
+                                <>
+                                  <Check className="w-3 h-3 text-emerald-500" />
+                                  <span className="text-emerald-500">Copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3 h-3" />
+                                  <span>Copy</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        ) : (
+                          /* Assistant Actions: Retry & Copy */
+                          <div className="flex items-center space-x-2">
                             <button
                               onClick={() => handleRetry(index)}
+                              disabled={isStreaming}
                               type="button"
-                              className="p-1 rounded hover:bg-slate-200/80 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 transition-colors flex items-center space-x-1"
-                              title="Regenerate response"
+                              className="px-2.5 py-0.5 rounded-md text-[11px] font-medium text-slate-600 hover:text-hkbu-blue-700 dark:text-slate-300 dark:hover:text-hkbu-blue-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 flex items-center space-x-1 transition-colors cursor-pointer shadow-2xs"
+                              title="Regenerate this response"
                             >
-                              <RotateCw className="w-3 h-3" />
-                              <span className="text-[10px]">Retry</span>
+                              <RotateCw className="w-3 h-3 text-hkbu-blue-600 dark:text-hkbu-blue-400" />
+                              <span>Retry</span>
                             </button>
-                          )}
-                        </div>
-                      </>
+
+                            <button
+                              onClick={() => handleCopyMessage(msg.id, msg.content || msg.reasoning || '')}
+                              type="button"
+                              className="px-2.5 py-0.5 rounded-md text-[11px] font-medium text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 flex items-center space-x-1 transition-colors cursor-pointer shadow-2xs"
+                              title="Copy response"
+                            >
+                              {copiedMsgId === msg.id ? (
+                                <>
+                                  <Check className="w-3 h-3 text-emerald-500" />
+                                  <span className="text-emerald-500">Copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3 h-3" />
+                                  <span>Copy</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

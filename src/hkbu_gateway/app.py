@@ -188,6 +188,10 @@ def validate_model(model_id: str, kind: str):
 def upstream_payload(request: BaseModel) -> dict[str, Any]:
     payload = request.model_dump(exclude_none=True)
     payload.pop("model", None)
+    if "messages" in payload and isinstance(payload["messages"], list):
+        for msg in payload["messages"]:
+            if "content" not in msg or msg["content"] is None:
+                msg["content"] = ""
     return payload
 
 

@@ -1,3 +1,4 @@
+import json
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -65,13 +66,34 @@ class HKBUProvider:
     async def chat_stream(
         self, model: str, payload: dict[str, Any], api_key: str | None = None
     ) -> AsyncIterator[bytes]:
-        async with self.client.stream(
-            "POST",
-            self._url(model, "chat/completions"),
-            headers=self._headers(api_key),
-            json=payload,
-        ) as response:
-            if response.is_error:
-                raise UpstreamError(response.status_code, (await response.aread())[:2000].decode())
-            async for line in response.aiter_lines():
-                yield f"{line}\n".encode()
+        try:
+            async with self.client.stream(
+                "POST",
+                self._url(model, "chat/completions"),
+                headers=self._headers(api_key),
+                json=payload,
+            ) as response:
+                if response.is_error:
+                    error_detail = (await response.aread())[:2000].decode()
+                    error_json = json.dumps({
+                        "error": {
+                            "message": f"HKBU Platform error ({response.status_code}): {error_detail}",
+                            "type": "upstream_error",
+                            "code": response.status_code,
+                        }
+                    })
+                    yield f"data: {error_json}\n\n".encode()
+                    yield b"data: [DONE]\n\n"
+                    return
+                async for line in response.aiter_lines():
+                    yield f"{line}\n".encode()
+        except httpx.HTTPError as exc:
+            error_json = json.dumps({
+                "error": {
+                    "message": f"Network error connecting to HKBU Platform: {exc}",
+                    "type": "upstream_error",
+                }
+            })
+            yield f"data: {error_json}\n\n".encode()
+            yield b"data: [DONE]\n\n"
+

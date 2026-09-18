@@ -161,6 +161,11 @@ export async function streamChatCompletion({
           const jsonStr = trimmed.slice(6);
           try {
             const parsed = JSON.parse(jsonStr);
+            if (parsed.error) {
+              const errMsg = parsed.error.message || 'Stream error occurred';
+              onError(new Error(errMsg));
+              return;
+            }
             const delta = parsed.choices?.[0]?.delta;
             if (delta) {
               const content = delta.content || '';
@@ -169,8 +174,11 @@ export async function streamChatCompletion({
                 onChunk({ content, reasoning_content: reasoning });
               }
             }
-          } catch {
-            // Ignore incomplete line parse
+          } catch (e: any) {
+            if (e.message && !e.message.startsWith('Unexpected') && !e.message.includes('JSON')) {
+              onError(e);
+              return;
+            }
           }
         }
       }
