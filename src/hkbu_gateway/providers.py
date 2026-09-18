@@ -74,7 +74,8 @@ class HKBUProvider:
                 json=payload,
             ) as response:
                 if response.is_error:
-                    error_detail = (await response.aread())[:2000].decode()
+                    raw_bytes = await response.aread()
+                    error_detail = raw_bytes[:2000].decode("utf-8", errors="replace")
                     error_json = json.dumps({
                         "error": {
                             "message": f"HKBU Platform error ({response.status_code}): {error_detail}",
@@ -87,7 +88,7 @@ class HKBUProvider:
                     return
                 async for line in response.aiter_lines():
                     yield f"{line}\n".encode()
-        except httpx.HTTPError as exc:
+        except Exception as exc:
             error_json = json.dumps({
                 "error": {
                     "message": f"Network error connecting to HKBU Platform: {exc}",

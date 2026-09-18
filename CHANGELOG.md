@@ -5,7 +5,24 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - 2026-09-18
+
+### Added
+
+- Official v1.0.0 Production Release of the HKBU GenAI Gateway.
+- Zero-config cloud deployment support (`Procfile`, `requirements.txt`) fully compatible with Railway, Render, Docker, and Nixpacks.
+- Safe dynamic URL resolution supporting arbitrary custom domains and reverse proxies (`https://byok.aitutor.ink`).
+- Robust agent compatibility supporting Cursor, Cline, Roo Code, and Dify with full pass-through for custom parameters, function/tool calling schemas, and response formats.
+- Safe UTF-8 error decoding (`errors="replace"`) for upstream streaming chunks to prevent character boundary exceptions.
+- Comprehensive SQLite connection lifecycle management with guaranteed connection cleanup and WAL mode.
+- Built-in multi-session Chat Playground with streaming markdown, DeepSeek thought accordions, code copy, message editing, and model switching.
+
+### Changed
+
+- Case-insensitive model registry lookup (`gpt-4.1` vs `GPT-4.1`).
+- Upstream authentication header flexibility supporting both `HKBU_UPSTREAM_AUTH_HEADER` and `HKBU_API_KEY_HEADER`.
+- Gateway Authorization parsing supporting case-insensitive `Bearer` prefix as well as `api-key` and `x-api-key` headers.
+- Enhanced HTTP error handling mapping upstream status codes directly to standard OpenAI error formats.
 
 ## [0.3.2] - 2026-09-18
 

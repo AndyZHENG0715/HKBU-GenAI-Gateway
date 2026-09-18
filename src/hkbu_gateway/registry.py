@@ -29,4 +29,7 @@ MODELS = (
 
 
 def find_model(model_id: str) -> Model | None:
-    return next((model for model in MODELS if model.id == model_id), None)
+    exact = next((model for model in MODELS if model.id == model_id), None)
+    if exact:
+        return exact
+    return next((model for model in MODELS if model.id.lower() == model_id.lower()), None)

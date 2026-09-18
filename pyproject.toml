@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hkbu-genai-gateway"
-version = "0.2.0"
+version = "1.0.0"
 description = "OpenAI-compatible gateway for the HKBU GenAI Platform"
 requires-python = ">=3.11"
 dependencies = [

@@ -30,10 +30,14 @@ export const ModelCatalog: React.FC = () => {
     return matchesSearch && matchesCategory;
   });
 
-  const handleCopyModelId = (id: string) => {
-    navigator.clipboard.writeText(id);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopyModelId = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      // Fallback or ignore clipboard errors
+    }
   };
 
   return (

@@ -10,6 +10,7 @@ class ChatMessage(BaseModel):
 
 
 class ChatCompletionRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
     model: str
     messages: list[ChatMessage] = Field(min_length=1)
     stream: bool = False
@@ -20,6 +21,7 @@ class ChatCompletionRequest(BaseModel):
 
 
 class EmbeddingRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
     model: str
     input: str | list[str]
     encoding_format: str | None = None

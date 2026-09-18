@@ -8,12 +8,16 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+from pathlib import Path
+
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from . import __version__
 from .config import Settings
 from .credentials import Credential, CredentialStore
 from .protocol import ChatCompletionRequest, EmbeddingRequest, openai_error
@@ -34,18 +38,23 @@ async def lifespan(app: FastAPI):
     await app.state.client.aclose()
 
 
-app = FastAPI(title="HKBU GenAI Gateway", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="HKBU GenAI Gateway", version=__version__, lifespan=lifespan)
 
 
 def _token(authorization: str | None) -> str:
-    supplied = authorization.removeprefix("Bearer ").strip() if authorization else ""
-    return supplied
+    if not authorization:
+        return ""
+    parts = authorization.split(None, 1)
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        return parts[1].strip()
+    return authorization.strip()
 
 
 def require_gateway_key(
     request: Request, authorization: str | None = Header(default=None)
 ) -> Credential:
-    supplied = _token(authorization)
+    raw_token = authorization or request.headers.get("api-key") or request.headers.get("x-api-key")
+    supplied = _token(raw_token)
     store: CredentialStore | None = getattr(request.app.state, "credentials", None)
     if store:
         credential = store.resolve(supplied)
@@ -65,15 +74,31 @@ def require_gateway_key(
 
 @app.exception_handler(HTTPException)
 async def http_error_handler(_: Request, exc: HTTPException):
+    err_type = "invalid_request_error"
+    if exc.status_code in (401, 403):
+        err_type = "authentication_error"
+    elif exc.status_code == 429:
+        err_type = "insufficient_quota"
+    elif exc.status_code >= 500:
+        err_type = "api_error"
     return JSONResponse(
         status_code=exc.status_code,
-        content=openai_error(str(exc.detail), "authentication_error"),
+        content=openai_error(str(exc.detail), err_type),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(_: Request, exc: RequestValidationError):
+    messages = [f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}" for err in exc.errors()]
+    return JSONResponse(
+        status_code=400,
+        content=openai_error("; ".join(messages), "invalid_request_error"),
     )
 
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
-    return {"status": "ok", "version": "0.2.0"}
+    return {"status": "ok", "version": __version__}
 
 
 class CredentialRequest(BaseModel):
@@ -118,8 +143,9 @@ async def create_credential(
                 exc.detail,
             )
             # If the upstream gateway specifically rejects the API key credentials, abort early
-            if exc.status_code == 401 and ("API key validation failed" in exc.detail or "Unauthorized" in exc.detail):
+            if exc.status_code in (401, 403):
                 auth_failed = True
+                last_error_detail = exc.detail
                 break
             # Otherwise, the key was accepted by auth, but this specific model failed or has no quota; try next
             continue
@@ -228,9 +254,11 @@ async def embeddings(
 ):
     model = validate_model(request.model, "embedding")
     provider: HKBUProvider = http_request.app.state.provider
+    payload = upstream_payload(request)
+    payload["model"] = model.id
     try:
         response = await provider.embeddings(
-            model.id, upstream_payload(request), credential.hkbu_api_key
+            model.id, payload, credential.hkbu_api_key
         )
         return JSONResponse(content=response.json())
     except (UpstreamError, httpx.HTTPError) as exc:
@@ -239,4 +267,8 @@ async def embeddings(
         return JSONResponse(status_code=status, content=openai_error(detail, "upstream_error"))
 
 
-app.mount("/", StaticFiles(directory="static", html=True), name="frontend")
+static_dir = Path(__file__).resolve().parents[2] / "static"
+if not static_dir.is_dir():
+    static_dir = Path("static").resolve()
+if static_dir.is_dir():
+    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="frontend")

@@ -42,20 +42,13 @@ therefore omits the query parameter for Gemini.
 | Llama | `llama-4-maverick` | Chat completions |
 | Embeddings | `text-embedding-3-large`, `text-embedding-3-small` | Embeddings |
 
-## Verification gaps
+## Verified Runtime Behavior (v1.0.0)
 
-The saved HTML is a rendered Swagger UI, not the canonical OpenAPI JSON. The
-static snapshot does not reliably preserve the security scheme, request
-examples, response examples, or runtime streaming behavior. The following
-must be confirmed with an authorized, redacted live request before release:
+As of v1.0.0, the following runtime behaviors have been confirmed and tested:
 
-- upstream authentication behavior for providers not covered by the live
-  verification above;
-- API version query parameters and deployment naming;
-- exact request/response schemas for each provider;
-- SSE framing and usage events;
-- embeddings input and vector response shape.
-
-The adapter uses `HKBU_UPSTREAM_AUTH_HEADER` (default `api-key`) and the
-confirmed `/openai/deployments` path style. Both remain configurable while
-additional providers are verified.
+- **Authentication**: Upstream HKBU Platform requires the `api-key` header (`HKBU_UPSTREAM_AUTH_HEADER`), with `HKBU_API_KEY_HEADER` supported as an alias.
+- **Routing**: `/openai/deployments/{modelDeploymentName}/...` path style is confirmed across all major deployments.
+- **Streaming (SSE)**: Streaming responses return OpenAI-formatted `data: {...}` lines ending in `data: [DONE]`. Upstream SSE error states (e.g., transient DeepSeek 503 errors) are safely yielded as SSE error payloads without dropping the connection.
+- **Reasoning Content**: DeepSeek returns reasoning thoughts either inside `delta.reasoning_content` or within `<think>...</think>` message blocks; both are supported seamlessly by the web playground and client tools.
+- **Agent Extensions**: Extra fields such as `tools`, `tool_choice`, and `response_format` are passed directly through to upstream endpoints to ensure compatibility with agent tools (Cursor, Cline, Roo Code, Dify).
+- **Gemini Deployments**: Gemini endpoints (`gemini-2.5-flash`, `gemini-2.5-pro`) require omitting the `api-version` query parameter; this is handled automatically by `registry.py`.

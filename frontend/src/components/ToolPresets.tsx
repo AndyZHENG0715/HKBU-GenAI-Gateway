@@ -13,10 +13,14 @@ export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
   const baseUrl = getBaseUrl();
   const effectiveKey = apiKey || 'your-gateway-api-key';
 
-  const copyText = (text: string, fieldId: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(fieldId);
-    setTimeout(() => setCopiedField(null), 2000);
+  const copyText = async (text: string, fieldId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldId);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch {
+      // Fallback or ignore clipboard errors
+    }
   };
 
   return (
@@ -121,7 +125,7 @@ export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
               <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Step 1: Settings</span>
                 <p className="text-xs text-slate-700 dark:text-slate-300">
-                  Open Chatbox Settings $\rightarrow$ Model Provider $\rightarrow$ choose <strong>OpenAI API</strong>.
+                  Open Chatbox Settings → Model Provider → choose <strong>OpenAI API</strong>.
                 </p>
               </div>
 
@@ -218,7 +222,7 @@ export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
               Use your HKBU model quota directly inside Cursor for code completions and agent chat:
             </p>
             <ol className="list-decimal list-inside space-y-2 text-sm text-slate-700 dark:text-slate-300 pl-1">
-              <li>Open Cursor $\rightarrow$ <strong>Settings</strong> $\rightarrow$ <strong>Models</strong>.</li>
+              <li>Open Cursor → <strong>Settings</strong> → <strong>Models</strong>.</li>
               <li>Toggle <strong>OpenAI API Key</strong> to Enabled.</li>
               <li>Enter your Gateway API Key: <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-mono text-xs">{effectiveKey.slice(0, 14)}...</code></li>
               <li>Under <strong>Override OpenAI Base URL</strong>, check the box and enter: <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-mono text-xs">{baseUrl}</code></li>

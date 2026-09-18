@@ -23,8 +23,12 @@ Allowed common types are `feat`, `fix`, `docs`, `test`, `refactor`, `build`,
 ## Versions
 
 The canonical application version is stored in `VERSION`. Releases use
-Semantic Versioning (`MAJOR.MINOR.PATCH`) and must also update
-`CHANGELOG.md`.
+Semantic Versioning (`MAJOR.MINOR.PATCH`). Every version bump must update:
+- `VERSION`
+- `pyproject.toml`
+- `src/hkbu_gateway/__init__.py`
+- `frontend/package.json`
+- `CHANGELOG.md`
 
 ## Provider changes
 

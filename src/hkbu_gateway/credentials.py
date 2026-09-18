@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 import secrets
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -64,11 +66,19 @@ class CredentialStore:
             ) from exc
         self.database_path = database_path
         self._memory_conn: sqlite3.Connection | None = (
-            sqlite3.connect(":memory:") if database_path == ":memory:" else None
+            sqlite3.connect(":memory:", check_same_thread=False)
+            if database_path == ":memory:"
+            else None
         )
         if self._memory_conn:
             self._memory_conn.row_factory = sqlite3.Row
         with self._connect() as connection:
+            if database_path != ":memory:":
+                try:
+                    connection.execute("PRAGMA journal_mode=WAL;")
+                    connection.execute("PRAGMA busy_timeout=5000;")
+                except sqlite3.OperationalError:
+                    pass
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS gateway_credentials (
@@ -82,12 +92,19 @@ class CredentialStore:
                 """
             )
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         if self._memory_conn:
-            return self._memory_conn
-        connection = sqlite3.connect(self.database_path)
-        connection.row_factory = sqlite3.Row
-        return connection
+            with self._memory_conn:
+                yield self._memory_conn
+        else:
+            connection = sqlite3.connect(self.database_path, timeout=30.0)
+            connection.row_factory = sqlite3.Row
+            try:
+                with connection:
+                    yield connection
+            finally:
+                connection.close()
 
     @staticmethod
     def _hash(value: str) -> str:

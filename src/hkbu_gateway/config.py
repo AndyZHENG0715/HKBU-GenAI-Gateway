@@ -21,8 +21,10 @@ class Settings:
             ).rstrip("/"),
             upstream_api_key=os.getenv("HKBU_UPSTREAM_API_KEY"),
             gateway_api_key=os.getenv("HKBU_GATEWAY_API_KEY"),
-            upstream_auth_header=os.getenv(
-                "HKBU_UPSTREAM_AUTH_HEADER", "api-key"
+            upstream_auth_header=(
+                os.getenv("HKBU_UPSTREAM_AUTH_HEADER")
+                or os.getenv("HKBU_API_KEY_HEADER")
+                or "api-key"
             ),
             upstream_path_style=os.getenv(
                 "HKBU_UPSTREAM_PATH_STYLE", "openai/deployments"

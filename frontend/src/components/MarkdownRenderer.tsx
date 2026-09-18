@@ -38,7 +38,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-hkbu-blue-600 dark:text-hkbu-blue-400 font-medium underline hover:text-hkbu-blue-800 dark:hover:text-hkbu-300 transition-colors"
+                className="text-hkbu-blue-600 dark:text-hkbu-blue-400 font-medium underline hover:text-hkbu-blue-800 dark:hover:text-hkbu-blue-300 transition-colors"
                 {...props}
               >
                 {children}

@@ -17,16 +17,24 @@ export const ResultCard: React.FC<ResultCardProps> = ({
   const [copiedUrl, setCopiedUrl] = useState(false);
   const baseUrl = getBaseUrl();
 
-  const handleCopyKey = () => {
-    navigator.clipboard.writeText(apiKey);
-    setCopiedKey(true);
-    setTimeout(() => setCopiedKey(false), 2500);
+  const handleCopyKey = async () => {
+    try {
+      await navigator.clipboard.writeText(apiKey);
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 2500);
+    } catch {
+      // ignore
+    }
   };
 
-  const handleCopyUrl = () => {
-    navigator.clipboard.writeText(baseUrl);
-    setCopiedUrl(true);
-    setTimeout(() => setCopiedUrl(false), 2500);
+  const handleCopyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(baseUrl);
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2500);
+    } catch {
+      // ignore
+    }
   };
 
   return (

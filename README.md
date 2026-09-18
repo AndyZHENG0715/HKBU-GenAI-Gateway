@@ -26,7 +26,7 @@ Students and researchers can convert their university platform key into standard
 
 Requires Python 3.11+ and uv or pip.
 
-### 1. Install & Run Server
+### 1. Install & Run Locally
 
 ```bash
 # Clone the repository
@@ -43,6 +43,17 @@ uvicorn hkbu_gateway.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Open `http://localhost:8000/` (or `http://localhost:8000/hkbuapi4agent.html`) in your browser to access the developer portal and playground.
+
+### 2. Cloud Deployment (Railway, Render, Docker)
+
+The repository includes a root `Procfile` and `requirements.txt` for 1-click zero-config cloud deployments:
+
+- **Railway**: Connect your GitHub repository or run `railway up`. No mandatory environment variables are needed; encryption keys and the SQLite database will be initialized automatically.
+- **Docker / Custom Hosts**:
+  ```bash
+  pip install -r requirements.txt
+  PYTHONPATH=src uvicorn hkbu_gateway.app:app --host 0.0.0.0 --port ${PORT:-8000}
+  ```
 
 ---
 
@@ -74,7 +85,8 @@ print(response.choices[0].message.content)
 | `HKBU_DATABASE_PATH` | Path to SQLite database file | `hkbu_gateway.db` |
 | `HKBU_GATEWAY_ENCRYPTION_KEY` | 32-byte Fernet key for key encryption | Auto-generated into `hkbu_gateway.key` |
 | `HKBU_UPSTREAM_BASE_URL` | Upstream HKBU GenAI endpoint | `https://genai.hkbu.edu.hk/api/v0/rest` |
-| `HKBU_API_KEY_HEADER` | Header name expected by upstream HKBU | `api-key` |
+| `HKBU_UPSTREAM_AUTH_HEADER` / `HKBU_API_KEY_HEADER` | Header name expected by upstream HKBU | `api-key` |
+| `HKBU_UPSTREAM_PATH_STYLE` | Upstream routing style (`direct` or `model_param`) | `direct` |
 
 ---
 
