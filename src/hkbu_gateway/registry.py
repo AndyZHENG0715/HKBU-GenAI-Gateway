@@ -82,8 +82,23 @@ MODELS = (
 )
 
 
+def _normalize_name(name: str) -> str:
+    return name.lower().replace("-", "").replace("_", "").replace(" ", "")
+
+
 def find_model(model_id: str) -> Model | None:
     exact = next((model for model in MODELS if model.id == model_id), None)
     if exact:
         return exact
-    return next((model for model in MODELS if model.id.lower() == model_id.lower()), None)
+    case_insensitive = next((model for model in MODELS if model.id.lower() == model_id.lower()), None)
+    if case_insensitive:
+        return case_insensitive
+    norm = _normalize_name(model_id)
+    return next(
+        (
+            model
+            for model in MODELS
+            if _normalize_name(model.id) == norm or _normalize_name(model.name) == norm
+        ),
+        None,
+    )

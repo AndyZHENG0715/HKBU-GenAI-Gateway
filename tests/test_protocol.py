@@ -5,6 +5,8 @@ from hkbu_gateway.protocol import ChatCompletionRequest
 def test_registry_contains_documented_models():
     assert find_model("gpt-4.1").provider == "gpt"
     assert find_model("text-embedding-3-small").kind == "embedding"
+    assert find_model("Qwen-3-max").id == "qwen3-max"
+    assert find_model("GPT 5 Mini").id == "gpt-5-mini"
 
 
 def test_chat_request_keeps_openai_shape():

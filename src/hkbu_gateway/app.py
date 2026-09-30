@@ -404,8 +404,9 @@ def upstream_payload(request: BaseModel, model_id: str | None = None) -> dict[st
                 _sanitize_message_content(msg)
 
     if model_id:
-        # Reasoning models (o1, o3-mini) reject temperature, top_p, and penalties
-        if model_id.startswith(("o1", "o3")):
+        # Reasoning models (o1, o3, gpt-5, gpt-5-mini) on Azure reject custom temperature, top_p, and penalties
+        mid = model_id.lower()
+        if mid.startswith(("o1", "o3", "gpt-5")):
             payload.pop("temperature", None)
             payload.pop("top_p", None)
             payload.pop("presence_penalty", None)

@@ -188,6 +188,7 @@ class HKBUProvider:
 
         think_filter = ThinkStreamFilter()
         last_chunk_template: dict[str, Any] | None = None
+        has_emitted_choices = False
 
         try:
             async with self.client.stream(
@@ -218,12 +219,7 @@ class HKBUProvider:
                     return
 
                 async for line in response.aiter_lines():
-                    if not line:
-                        yield b"\n"
-                        continue
-
-                    if not line.startswith("data: "):
-                        yield f"{line}\n".encode()
+                    if not line or not line.startswith("data: "):
                         continue
 
                     raw_data = line[6:].strip()
@@ -239,6 +235,7 @@ class HKBUProvider:
                                         "finish_reason": None,
                                     }]
                                     yield f"data: {json.dumps(c)}\n\n".encode()
+                                    has_emitted_choices = True
                                 else:
                                     c["choices"] = [{
                                         "index": 0,
@@ -249,13 +246,30 @@ class HKBUProvider:
                                         synthetic_line = f"data: {json.dumps(c)}"
                                         for chunk_bytes in tool_stream_filter.process_chunk(synthetic_line):
                                             yield chunk_bytes
+                                            has_emitted_choices = True
                                     else:
                                         yield f"data: {json.dumps(c)}\n\n".encode()
+                                        has_emitted_choices = True
 
                         if emulate and tool_stream_filter:
                             for chunk_bytes in tool_stream_filter.flush_done():
                                 yield chunk_bytes
+                                has_emitted_choices = True
                         else:
+                            if not has_emitted_choices:
+                                fallback_template = last_chunk_template or {
+                                    "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
+                                    "object": "chat.completion.chunk",
+                                    "created": int(time.time()),
+                                    "model": model,
+                                }
+                                c = dict(fallback_template)
+                                c["choices"] = [{
+                                    "index": 0,
+                                    "delta": {},
+                                    "finish_reason": "stop",
+                                }]
+                                yield f"data: {json.dumps(c)}\n\n".encode()
                             yield b"data: [DONE]\n\n"
                         return
 
@@ -283,6 +297,7 @@ class HKBUProvider:
                                             "delta": new_delta,
                                         }]
                                         yield f"data: {json.dumps(c)}\n\n".encode()
+                                        has_emitted_choices = True
                                     else:
                                         new_delta["content"] = piece
                                         c["choices"] = [{
@@ -293,21 +308,27 @@ class HKBUProvider:
                                         if emulate and tool_stream_filter:
                                             for chunk_bytes in tool_stream_filter.process_chunk(synthetic_line):
                                                 yield chunk_bytes
+                                                has_emitted_choices = True
                                         else:
                                             yield f"{synthetic_line}\n\n".encode()
+                                            has_emitted_choices = True
                                 continue
 
                         if emulate and tool_stream_filter:
                             for chunk_bytes in tool_stream_filter.process_chunk(line):
                                 yield chunk_bytes
+                                has_emitted_choices = True
                         else:
                             yield f"{line}\n\n".encode()
+                            has_emitted_choices = True
                     except Exception:
                         if emulate and tool_stream_filter:
                             for chunk_bytes in tool_stream_filter.process_chunk(line):
                                 yield chunk_bytes
+                                has_emitted_choices = True
                         else:
                             yield f"{line}\n\n".encode()
+                            has_emitted_choices = True
 
                 if emulate and tool_stream_filter and tool_stream_filter.buffer:
                     for chunk_bytes in tool_stream_filter.flush_done():
