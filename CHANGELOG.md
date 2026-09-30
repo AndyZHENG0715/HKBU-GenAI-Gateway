@@ -5,6 +5,30 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-30
+
+### Added
+
+- **Cross-Platform 1-Click Startup Scripts**:
+  - `start.sh` & `start.command`: Zero-configuration startup scripts for macOS and Linux. Automatically validates Python runtime, auto-provisions lightweight isolated Python 3.12 via `uv` when system Python is missing or `<3.9`, initializes `.venv`, installs requirements, starts the gateway server, and opens `http://localhost:8000` in the default browser. Double-clickable in macOS Finder.
+  - `start.bat`: Native Windows batch launcher with automatic virtual environment initialization, dependency installation, browser launch, and server execution. Double-clickable in File Explorer.
+- **Docker & Container Deployment**:
+  - Added multi-platform `Dockerfile` based on `python:3.12-slim`.
+  - Added `docker-compose.yml` with host volume mounting (`./data`) for zero-config persistence of the encrypted SQLite database (`hkbu_gateway.db`) and Fernet key (`hkbu_gateway.key`).
+- **Multilingual Documentation**:
+  - Added comprehensive Simplified Chinese documentation (`README.zh-CN.md`).
+  - Added Traditional Chinese documentation (`README.zh-HK.md`) formatted with Hong Kong vernacular and university conventions.
+  - Added language selector navigation header to English, Simplified Chinese, and Traditional Chinese READMEs.
+
+### Changed
+
+- **Python Runtime Compatibility**:
+  - Added `from __future__ import annotations` across all gateway modules (`app.py`, `config.py`, `credentials.py`, `protocol.py`, `providers.py`, `registry.py`, `tools.py`), enabling native operation on macOS default Python 3.9 runtimes without union typing (`|`) evaluation exceptions.
+  - Broadened `requires-python` constraint in `pyproject.toml` from `>=3.11` to `>=3.9`.
+- **Documentation**:
+  - Updated `README.md` to highlight 1-click startup across macOS, Windows, Linux, and Docker.
+  - Updated `docs/architecture.md` to detail deployment lifecycle and container architecture.
+
 ## [1.2.0] - 2026-09-18
 
 ### Added

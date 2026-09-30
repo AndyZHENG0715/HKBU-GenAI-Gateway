@@ -61,3 +61,15 @@ by the student or researcher who generated them.
 Unsupported provider features must produce a structured `400` response. The
 gateway must not silently drop fields such as `tools`, `response_format`, or
 `stream`.
+
+## Deployment and startup lifecycle
+
+- **Cross-platform self-contained scripts**:
+  - `start.sh` and `start.command` automate virtual environment creation, Python runtime auto-provisioning via `uv` (if system Python is `<3.9`), dependency installation, browser launch, and server execution.
+  - `start.bat` provides identical zero-config initialization for Windows environments.
+- **Container execution**:
+  - `Dockerfile` runs on `python:3.12-slim` with unprivileged port `8000`.
+  - `docker-compose.yml` mounts `./data` into `/app/data` to persist `hkbu_gateway.db` and the generated Fernet key across container restarts.
+- **PaaS & Serverless**:
+  - Supported via root `Procfile` (`web: PYTHONPATH=src uvicorn hkbu_gateway.app:app --host 0.0.0.0 --port ${PORT:-8000}`) for Railway, Render, and custom VPS hosts.
+
