@@ -30,9 +30,9 @@ Target Version: **`2.0.0`** (SemVer major bump: Agentic Playground evolution).
 - [x] **Commit 2**: `feat(agent): implement browser-native tools with Pyodide and File System Access API`
 
 ### Milestone 3: Agent Core Loop Engine
-- [ ] **Task 3.1**: Implement `frontend/src/lib/agent/loop.ts` (Pi-inspired state machine: context preparation, LLM invocation, tool call detection, local dispatch, result injection, turn counter, cancellation token).
-- [ ] **Task 3.2**: Add loop safety protections (max 10 iterations, error boundary, output truncation).
-- [ ] **Commit 3**: `feat(agent): implement autonomous agent execution loop with cycle guard`
+- [x] **Task 3.1**: Implement `frontend/src/lib/agent/loop.ts` (Pi-inspired state machine: context preparation, LLM invocation, tool call detection, local dispatch, result injection, turn counter, cancellation token).
+- [x] **Task 3.2**: Add loop safety protections (max 10 iterations, error boundary, output truncation).
+- [x] **Commit 3**: `feat(agent): implement autonomous agent execution loop with cycle guard`
 
 ### Milestone 4: UI / UX Playground Integration
 - [ ] **Task 4.1**: Build `frontend/src/components/ToolCallCard.tsx` (collapsible arguments, status indicators, console output viewer, Matplotlib plot image preview, copy button).
