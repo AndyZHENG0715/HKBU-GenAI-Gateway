@@ -204,7 +204,14 @@ class HKBUProvider:
                             "message": f"HKBU Platform error ({response.status_code}): {error_detail}",
                             "type": "upstream_error",
                             "code": response.status_code,
-                        }
+                        },
+                        "choices": [{
+                            "index": 0,
+                            "delta": {
+                                "content": f"\n\n[Error from HKBU Platform ({response.status_code}): {error_detail}]\n\n"
+                            },
+                            "finish_reason": "stop",
+                        }],
                     })
                     yield f"data: {error_json}\n\n".encode()
                     yield b"data: [DONE]\n\n"
@@ -311,7 +318,14 @@ class HKBUProvider:
                 "error": {
                     "message": f"Network error connecting to HKBU Platform: {exc}",
                     "type": "upstream_error",
-                }
+                },
+                "choices": [{
+                    "index": 0,
+                    "delta": {
+                        "content": f"\n\n[Gateway Network Error: {exc}]\n\n"
+                    },
+                    "finish_reason": "stop",
+                }],
             })
             yield f"data: {error_json}\n\n".encode()
             yield b"data: [DONE]\n\n"

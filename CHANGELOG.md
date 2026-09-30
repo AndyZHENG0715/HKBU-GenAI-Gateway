@@ -5,6 +5,29 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-09-30
+
+### Added
+
+- **XML Tool Call Extraction (`tools.py`)**:
+  - Implemented `_extract_xml_tool_calls` to parse XML tag tool invocations (such as `<read_file>...</read_file>`, `<Explore>...</Explore>`, and `<tool_call>`) emitted by DeepSeek and other models when prompted with tool calling schemas.
+  - Automatically converts extracted XML attributes and children into standard OpenAI `tool_calls` payloads with generated `call_...` IDs.
+- **Pipelined Streaming Reasoning & Tool Emulation (`providers.py`)**:
+  - Chained `ThinkStreamFilter` with `EmulatedToolStreamFilter` so that reasoning content streams concurrently via `delta.reasoning_content` while emulated tool calls are cleanly buffered and emitted as `delta.tool_calls`.
+
+### Fixed
+
+- **Message Content Normalization & Empty Fallbacks (`app.py`)**:
+  - Added `_sanitize_message_content()` and `_default_empty_content()` to sanitize complex multi-turn message structures sent by coding agents (VS Code Copilot, Cline, Cursor).
+  - Normalizes empty strings (`""`) and empty results into upstream-acceptable values (`None` for assistant with tool_calls, `"(success)"` for tool/function messages, `" "` for user/text messages), preventing upstream HKBU 400 Bad Request errors (`messages.<index>.Content must be either a string, null, or an array of content objects with type "text" or "image_url"`).
+  - Flattens Anthropic-style `tool_result` arrays and nested dictionary content into strings or strict `text`/`image_url` arrays.
+- **Streaming Error Resilience (`providers.py`)**:
+  - Added synthetic `choices` array alongside the OpenAI `error` object in streaming error SSE events, preventing agent clients (such as VS Code Copilot) from throwing `Response contained no choices` when upstream returns an error status code.
+- **Reasoning Model Parameter Stripping (`app.py`)**:
+  - Automatically strips unsupported hyperparameters (`temperature`, `top_p`, `presence_penalty`, `frequency_penalty`) and maps `max_tokens` to `max_completion_tokens` when invoking Azure OpenAI reasoning models (`o1`, `o3-mini`), resolving upstream 400 `unsupported_parameter` errors.
+- **DeepSeek Model Tool Configuration (`registry.py`)**:
+  - Configured DeepSeek models (`deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash`) with `native_tool_call=False` to route tool calling through the gateway emulation adapter rather than relying on upstream native function calling.
+
 ## [1.3.0] - 2026-09-30
 
 ### Added

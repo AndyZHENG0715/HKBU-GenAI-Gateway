@@ -274,10 +274,25 @@ def validate_model(model_id: str, kind: str):
     return model
 
 
+def _default_empty_content(role: str, has_tool_calls: bool) -> str | None:
+    """Return upstream-acceptable content when message content is empty or whitespace.
+    Upstream HKBU platform validator rejects empty string ("") across all roles.
+    - assistant with tool_calls: null (None) is required.
+    - tool / function: null and "" are rejected; non-empty string like '(success)' is required.
+    - user / system / others: single whitespace ' ' is required.
+    """
+    if role == "assistant" and has_tool_calls:
+        return None
+    if role in ("tool", "function"):
+        return "(success)"
+    return " "
+
+
 def _sanitize_message_content(msg: dict[str, Any]) -> None:
     """Ensure message content conforms to upstream HKBU requirements.
-    Must be either a string, null (for assistant tool_calls), or an array of
+    Must be either a non-empty string, null (for assistant tool_calls), or an array of
     content objects strictly with type 'text' or 'image_url'.
+    Upstream HKBU hard-rejects empty string ("") with 400 Bad Request.
     """
     content = msg.get("content")
     role = msg.get("role", "")
@@ -285,20 +300,19 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
 
     # 1. Null / None content
     if content is None:
-        if role == "assistant" and has_tool_calls:
-            msg["content"] = None
-        else:
-            msg["content"] = ""
+        msg["content"] = _default_empty_content(role, has_tool_calls)
         return
 
     # 2. Already string
     if isinstance(content, str):
+        if not content.strip():
+            msg["content"] = _default_empty_content(role, has_tool_calls)
         return
 
     # 3. List of content objects (VS Code / Copilot / multimodal)
     if isinstance(content, list):
         if len(content) == 0:
-            msg["content"] = None if (role == "assistant" and has_tool_calls) else ""
+            msg["content"] = _default_empty_content(role, has_tool_calls)
             return
 
         has_image = any(
@@ -310,14 +324,14 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
             sanitized_parts = []
             for item in content:
                 if isinstance(item, str):
-                    sanitized_parts.append({"type": "text", "text": item})
+                    sanitized_parts.append({"type": "text", "text": item if item.strip() else " "})
                 elif isinstance(item, dict):
                     itype = item.get("type")
                     if itype == "image_url":
                         sanitized_parts.append(item)
                     elif itype == "text":
                         text_val = item.get("text") or item.get("value") or ""
-                        sanitized_parts.append({"type": "text", "text": str(text_val)})
+                        sanitized_parts.append({"type": "text", "text": str(text_val) if str(text_val).strip() else " "})
                     else:
                         text_val = (
                             item.get("text")
@@ -325,9 +339,9 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
                             or item.get("content")
                             or json.dumps(item, ensure_ascii=False)
                         )
-                        sanitized_parts.append({"type": "text", "text": str(text_val)})
+                        sanitized_parts.append({"type": "text", "text": str(text_val) if str(text_val).strip() else " "})
                 else:
-                    sanitized_parts.append({"type": "text", "text": str(item)})
+                    sanitized_parts.append({"type": "text", "text": str(item) if str(item).strip() else " "})
             msg["content"] = sanitized_parts
         else:
             # No images: flatten parts into a single string for maximum upstream compatibility
@@ -347,7 +361,11 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
                     text_pieces.append(str(text_val))
                 else:
                     text_pieces.append(str(item))
-            msg["content"] = "".join(text_pieces)
+            joined = "".join(text_pieces)
+            if not joined.strip():
+                msg["content"] = _default_empty_content(role, has_tool_calls)
+            else:
+                msg["content"] = joined
         return
 
     # 4. Dict content
@@ -361,11 +379,19 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
                 or content.get("content")
                 or json.dumps(content, ensure_ascii=False)
             )
-            msg["content"] = str(text_val)
+            val_str = str(text_val)
+            if not val_str.strip():
+                msg["content"] = _default_empty_content(role, has_tool_calls)
+            else:
+                msg["content"] = val_str
         return
 
     # 5. Fallback for primitives
-    msg["content"] = str(content)
+    primitive_str = str(content)
+    if not primitive_str.strip():
+        msg["content"] = _default_empty_content(role, has_tool_calls)
+    else:
+        msg["content"] = primitive_str
 
 
 def upstream_payload(request: BaseModel, model_id: str | None = None) -> dict[str, Any]:

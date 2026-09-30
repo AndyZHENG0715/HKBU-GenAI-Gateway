@@ -47,3 +47,30 @@ def test_upstream_payload_sanitizes_content_and_reasoning_params():
     assert payload["messages"][1]["content"] is None  # assistant tool_calls
     assert payload["messages"][2]["content"] == "file data"
 
+
+def test_upstream_payload_sanitizes_empty_and_whitespace_content():
+    from hkbu_gateway.app import upstream_payload
+
+    request = ChatCompletionRequest(
+        model="gpt-4.1",
+        messages=[
+            {"role": "user", "content": ""},
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]},
+            {"role": "tool", "content": "", "tool_call_id": "c1"},
+            {"role": "tool", "content": None, "tool_call_id": "c2"},
+            {"role": "tool", "content": [], "tool_call_id": "c3"},
+            {"role": "assistant", "content": "   "},
+        ],
+    )
+
+    payload = upstream_payload(request, "gpt-4.1")
+
+    # Upstream HKBU requires non-empty strings and specific nulls
+    assert payload["messages"][0]["content"] == " "
+    assert payload["messages"][1]["content"] is None  # assistant with tool_calls -> None
+    assert payload["messages"][2]["content"] == "(success)"  # tool empty str -> (success)
+    assert payload["messages"][3]["content"] == "(success)"  # tool None -> (success)
+    assert payload["messages"][4]["content"] == "(success)"  # tool empty list -> (success)
+    assert payload["messages"][5]["content"] == " "  # assistant without tool_calls whitespace -> " "
+
+

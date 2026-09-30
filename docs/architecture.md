@@ -24,11 +24,11 @@ OpenAI / Agent client -> gateway auth -> model registry -> tools adapter / think
 
 ## Boundaries
 
-- `registry.py` owns model metadata, context window specs, and provider ability flags.
-- `tools.py` owns prompt-based tool calling emulation, JSON schema serialization, multi-turn tool result translation, and `EmulatedToolStreamFilter` for streaming SSE tool calls.
-- `providers.py` owns upstream URL routing, authentication headers, `ThinkStreamFilter` for multi-tag reasoning extraction, and upstream streaming lifecycles.
+- `registry.py` owns model metadata, context window specs, and provider ability flags (`native_tool_call`, `supports_tool_call`, `supports_reasoning`).
+- `tools.py` owns prompt-based tool calling emulation, JSON schema serialization, multi-turn tool result translation, XML tag extraction (`_extract_xml_tool_calls`), and `EmulatedToolStreamFilter` for streaming SSE tool calls.
+- `providers.py` owns upstream URL routing, authentication headers, `ThinkStreamFilter` for multi-tag reasoning extraction, coordinated streaming pipelines, and upstream streaming lifecycles.
 - `protocol.py` owns request validation and OpenAI-shaped response helpers.
-- `app.py` owns HTTP routing, static assets, and exception mapping.
+- `app.py` owns HTTP routing, static assets, exception mapping, message content sanitization (`_sanitize_message_content`), and reasoning model parameter sanitization.
 - `credentials.py` owns the encrypted SQLite credential store (`CredentialStore`).
 - Route handlers interact with `CredentialStore` via structured methods and never execute raw SQL directly.
 

@@ -13,8 +13,11 @@
 - **🔑 1 键密钥转换**：校验浸会大学平台 Key，生成与任何 OpenAI SDK 或第三方客户端兼容的标准 `Bearer` Token。
 - **🛠️ 全模型通用工具调用 (Function Calling)**：
   - 流式（SSE）与非流式全模式支持标准 OpenAI `tools: [...]` 与 `tool_calls`。
-  - Azure GPT、Google Gemini 与 DeepSeek 原生直通。
-  - 针对阿里通义千问（`qwen3-max`、`qwen-plus`）与谷歌 Vertex AI Llama（`llama-4-maverick`）内置**基于提示词的工具模拟适配器**（`tools.py`），无缝将客户端工具 Schema 与未解析的上游回复转换为标准 OpenAI `tool_calls`。
+  - Azure GPT 与 Google Gemini 原生直通。
+  - 针对 DeepSeek（`deepSeek-V4-Pro-hkbu`、`deepseek-v4-flash`）、阿里通义千问（`qwen3-max`、`qwen-plus`）与谷歌 Vertex AI Llama（`llama-4-maverick`）内置**基于提示词的工具模拟适配器**（`tools.py`），无缝将客户端工具 Schema 与模型输出（支持 JSON 块与 `<read_file>` 等 XML 标签）转换为标准 OpenAI `tool_calls`。
+- **🛡️ 面向 Coding Agent 的边缘协议平抑器**：
+  - 自动规整并清洗客户端多轮对话中的复杂内容数组（如 VS Code Copilot/Cline 的 `tool_result` 数组），展平为字符串或合规格式，避免上游 NestJS class-validator 400 校验错误。
+  - 透明剔除 Azure OpenAI 推理模型（`o1`、`o3-mini`）不支持的超参数（`temperature`、`top_p` 等）。
 - **🔍 通用模型发现与规格元数据**：
   - 提供 `/v1/models`、`/models`、`/v1/model`、`/model`、兼容 OpenRouter 的 `/api/v1/models` 以及兼容 LiteLLM 的 `/v1/model/info`。
   - 遵循 [models.dev](https://models.dev) 与腾讯工蜂（WorkBuddy）规格的模型能力完整元数据（`supportsToolCall`、`supportsReasoning`、`supportsVision`、`contextWindow`、`maxTokens`、`tool_call`、`reasoning`、`attachment`、`limit`、`capabilities`）。

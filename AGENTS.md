@@ -51,11 +51,11 @@ Do not violate module boundaries. Each module has a strict single responsibility
 
 | Path | Responsibility | Boundary Rules |
 | :--- | :--- | :--- |
-| `src/hkbu_gateway/app.py` | FastAPI application, route handlers, error handlers, static asset mounting. | Do not execute raw SQL here. Interacts with `CredentialStore` via app state. |
+| `src/hkbu_gateway/app.py` | FastAPI application, route handlers, error handlers, message content normalization (`_sanitize_message_content`), reasoning model parameter sanitization (`o1`/`o3`), static asset mounting. | Do not execute raw SQL here. Interacts with `CredentialStore` via app state. |
 | `src/hkbu_gateway/credentials.py` | Encrypted SQLite credential storage (`CredentialStore`). Fernet key generation and persistence. | Hash gateway keys with SHA-256 before storage. Never store plaintext keys. |
 | `src/hkbu_gateway/registry.py` | Model catalog, capabilities flags, context windows, models.dev / WorkBuddy metadata formatting. | All model additions must declare `supports_tool_call`, `supports_reasoning`, and `supports_vision`. |
-| `src/hkbu_gateway/providers.py` | Upstream HTTP client, upstream path resolution, streaming response processing, `ThinkStreamFilter`. | Handles upstream SSE parsing and error mapping. |
-| `src/hkbu_gateway/tools.py` | Tool calling emulation adapter for unparsed models (Qwen, Llama). `EmulatedToolStreamFilter`. | Converts tool definitions into system instructions and parses assistant JSON tool output. |
+| `src/hkbu_gateway/providers.py` | Upstream HTTP client, upstream path resolution, streaming response processing, coordinated `ThinkStreamFilter` and `tool_stream_filter`. | Handles upstream SSE parsing and error mapping. |
+| `src/hkbu_gateway/tools.py` | Tool calling emulation adapter for unparsed models (DeepSeek, Qwen, Llama). Supports JSON blocks and XML tags (`<tool_name>...</tool_name>`). `EmulatedToolStreamFilter`. | Converts tool definitions into system instructions and parses assistant JSON and XML tool output. |
 | `src/hkbu_gateway/protocol.py` | Pydantic schemas for OpenAI completion, embedding, and model responses. | Maintain strict OpenAI compatibility. |
 | `src/hkbu_gateway/config.py` | Environment variable resolution and default configuration dataclasses. | Do not hardcode runtime secrets. |
 | `frontend/src/` | Single-page developer portal and interactive chat playground. | Production output must go to `static/` with relative asset links (`base: './'`). |

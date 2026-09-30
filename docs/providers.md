@@ -70,23 +70,28 @@ Live tests against the upstream HKBU platform (`https://genai.hkbu.edu.hk/api/v0
 | --- | --- | --- | --- | --- | --- |
 | `gpt-5`, `gpt-4.1`, `gpt-4.1-mini`, `o1`, `o3-mini` | Azure OpenAI | **Yes** (stream + non-stream) | N/A (Native) | `true` | Native upstream OpenAI tool calling. |
 | `gemini-2.5-pro`, `gemini-2.5-flash` | Vertex AI | **Yes** (non-stream) | N/A (Native) | `true` | Native upstream with uppercase `STOP` normalized to `tool_calls`. |
-| `deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash` | DeepSeek | **Yes** (non-stream) | N/A (Native) | `true` | Native upstream with `<think>` blocks cleanly separated into `reasoning_content`. |
+| `deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash` | DeepSeek | **No** (Gated upstream) | **Yes** (stream + non-stream) | `true` | Gateway Prompt-Based Emulation Adapter (`tools.py`) with JSON & XML tag extraction (`<tool_name>...</tool_name>`). Combined with `ThinkStreamFilter` for concurrent reasoning extraction. |
 | `qwen3-max`, `qwen-plus` | Alibaba Cloud | **No** (Gated upstream) | **Yes** (stream + non-stream) | `true` | Gateway Prompt-Based Emulation Adapter (`tools.py`). Injects tool schema into system prompt, strips top-level tools, and parses structured output into OpenAI `tool_calls`. |
 | `llama-4-maverick` | Vertex AI | **No** (Gated upstream) | **Yes** (stream + non-stream) | `true` | Gateway Prompt-Based Emulation Adapter (`tools.py`). Injects tool schema into system prompt, translates tool result turns, and converts model output into OpenAI `tool_calls`. |
 
 ### 3. Tool Calling Emulation Architecture (`tools.py`)
-To unlock full tool calling capabilities for Qwen and Llama across agent harnesses (such as Tencent WorkBuddy, Cursor, Cline, OpenCode, and Dify):
+To unlock full tool calling capabilities for DeepSeek, Qwen, and Llama across agent harnesses (such as Tencent WorkBuddy, Cursor, VS Code Copilot, Cline, and Dify):
 1. **Request Translation**: When a client sends `tools: [...]` for a model where `native_tool_call` is false, the gateway:
    - Formats the tools JSON schemas into an authoritative system prompt instruction.
    - Converts any client-sent `role: "tool"` or `role: "function"` response turns into contextual user turns (`[Tool Result for {name}]: ...`).
    - Converts previous assistant messages containing `tool_calls` into assistant turns containing the JSON call block.
    - Pops `tools` and `tool_choice` from the payload sent to HKBU to avoid upstream errors or parameter dropping.
 2. **Response Translation (Non-Streaming)**:
-   - The gateway parses the model's text response for JSON function call blocks (`tool_calls`, `name`/`arguments`, `tool`/`parameters`, or `function`/`parameters`).
+   - The gateway parses the model's text response for both JSON function call blocks (`tool_calls`, `name`/`arguments`, `tool`/`parameters`, `function`/`parameters`) and XML tag calls (`<tool_name>...</tool_name>` or `<tool_call>`).
    - Normalizes valid calls into standard OpenAI `choices[0].message.tool_calls` with generated `call_...` IDs.
    - Sets `finish_reason: "tool_calls"` and clears `content`.
 3. **Response Translation (Streaming SSE)**:
-   - `EmulatedToolStreamFilter` buffers candidate JSON tool-calling tokens until completion, then emits the exact 3-chunk OpenAI tool calling event sequence (`delta.tool_calls` declaration, arguments chunk, and `finish_reason: "tool_calls"`).
+   - `EmulatedToolStreamFilter` buffers candidate tool-calling tokens (JSON blocks and XML tags) until completion, then emits the exact 3-chunk OpenAI tool calling event sequence (`delta.tool_calls` declaration, arguments chunk, and `finish_reason: "tool_calls"`).
+   - Coordinates with `ThinkStreamFilter` so that thinking tokens (`<think>`) stream in real time as `delta.reasoning_content` while tool calls are intercepted into `tool_calls`.
    - If the initial tokens are natural conversational text, it immediately flushes the buffer as `delta.content` with zero latency overhead.
+
+### 4. Client Agent Protocol Normalization (`app.py`)
+- **Message Content Normalization**: Complex multi-turn content arrays sent by agents (such as VS Code Copilot's `[{"type": "tool_result", ...}]` or `[{"type": "text", "value": "..."}]`) are automatically sanitized into plain strings or strictly valid `text`/`image_url` objects to satisfy upstream DTO validation rules.
+- **Reasoning Model Parameter Stripping**: Requests to Azure OpenAI `o1` and `o3-mini` automatically strip `temperature`, `top_p`, and penalty parameters, and map `max_tokens` to `max_completion_tokens`.
 
 

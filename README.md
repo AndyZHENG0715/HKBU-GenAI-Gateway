@@ -13,8 +13,11 @@ Students and researchers can convert their university platform key into standard
 - **🔑 1-Click Key Conversion**: Validate student HKBU Platform keys and generate standard `Bearer` tokens compatible with any OpenAI SDK or client application.
 - **🛠️ Universal Tool Calling (Function Calling)**:
   - Full OpenAI `tools: [...]` and `tool_calls` support for **all models** in both streaming and non-streaming modes.
-  - Native passthrough for Azure GPT, Google Gemini, and DeepSeek.
-  - Automatic **Prompt-Based Tool Emulation Adapter** (`tools.py`) for Alibaba Cloud Qwen (`qwen3-max`, `qwen-plus`) and Google Vertex AI Llama (`llama-4-maverick`), seamlessly converting client tool schemas and unparsed upstream responses into standard OpenAI `tool_calls`.
+  - Native passthrough for Azure GPT and Google Gemini.
+  - Automatic **Prompt-Based Tool Emulation Adapter** (`tools.py`) for DeepSeek (`deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash`), Alibaba Cloud Qwen (`qwen3-max`, `qwen-plus`), and Google Vertex AI Llama (`llama-4-maverick`), seamlessly converting client tool schemas and unparsed upstream responses (both JSON blocks and XML tags like `<read_file>`) into standard OpenAI `tool_calls`.
+- **🛡️ Edge Protocol Stabilization for Coding Agents**:
+  - Automatically sanitizes complex multi-turn message arrays (`messages[].content` containing Anthropic-style `tool_result` arrays) into plain strings or compliant OpenAI format, resolving upstream NestJS class-validator 400 errors.
+  - Transparently strips unsupported parameters (`temperature`, `top_p`, penalties) when using Azure OpenAI reasoning models (`o1`, `o3-mini`).
 - **🔍 Universal Model Discovery & Capabilities**:
   - Exposes `/v1/models`, `/models`, `/v1/model`, `/model`, OpenRouter-compatible `/api/v1/models`, and LiteLLM-compatible `/v1/model/info`.
   - Comprehensive model capabilities metadata following [models.dev](https://models.dev) and Tencent WorkBuddy schemas (`supportsToolCall`, `supportsReasoning`, `supportsVision`, `contextWindow`, `maxTokens`, `tool_call`, `reasoning`, `attachment`, `limit`, `capabilities`).

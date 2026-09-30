@@ -4,9 +4,9 @@ Durable state summary and context handover for AI coding agents and developers.
 
 ## 1. Project State
 
-- **Current Version**: `1.3.0`
+- **Current Version**: `1.3.1`
 - **Active Branch**: `main`
-- **Test Status**: 17/17 passing (`PYTHONPATH=src pytest`)
+- **Test Status**: 20/20 passing (`PYTHONPATH=src pytest`)
 - **Local Service**: Gateway daemon is active and listening on `http://0.0.0.0:8000` (PID managed, hot-reload active).
 
 ## 2. Completed Milestones
@@ -14,8 +14,12 @@ Durable state summary and context handover for AI coding agents and developers.
 ### Core Gateway Capabilities
 - OpenAI-compatible endpoints (`/v1/chat/completions`, `/v1/models`, `/v1/embeddings`).
 - Model capabilities discovery complying with LiteLLM (`/v1/model/info`), OpenRouter (`/api/v1/models`), and models.dev / Tencent WorkBuddy schemas.
-- Prompt-based tool calling emulation adapter (`src/hkbu_gateway/tools.py`) for Alibaba Cloud Qwen (`qwen3-max`, `qwen-plus`) and Vertex AI Llama (`llama-4-maverick`).
-- Universal reasoning extractor (`ThinkStreamFilter`) supporting `<think>`, `<thought>`, `<thinking>`, `<reasoning>`, and native `reasoning_content`.
+- Prompt-based tool calling emulation adapter (`src/hkbu_gateway/tools.py`) supporting both JSON blocks and XML tags (`<tool_name>...</tool_name>`) for DeepSeek, Alibaba Cloud Qwen (`qwen3-max`, `qwen-plus`), and Vertex AI Llama (`llama-4-maverick`).
+- Universal reasoning extractor (`ThinkStreamFilter`) supporting `<think>`, `<thought>`, `<thinking>`, `<reasoning>`, and native `reasoning_content`, coordinated with streaming tool call parsing.
+- Edge Protocol Stabilization & Agent Normalization (`src/hkbu_gateway/app.py`, `src/hkbu_gateway/providers.py`):
+  - Message content sanitization (`_sanitize_message_content`): flattens agent multi-turn `tool_result` arrays into strings or strict `text`/`image_url` objects; replaces empty strings (`""`) with compliant fallbacks (`(success)` for tools, `None` for assistant tool calls, `" "` for user/text) to satisfy upstream NestJS DTO validation rules.
+  - Streaming error resilience: embeds a fallback `choices` array in SSE error events so agent clients (e.g. VS Code Copilot) don't crash with `Response contained no choices`.
+  - Reasoning parameter stripping: automatically removes `temperature`, `top_p`, and penalty parameters for Azure OpenAI `o1` and `o3-mini`, mapping `max_tokens` to `max_completion_tokens`.
 - Built-in React 19 / Tailwind CSS playground in `frontend/` compiled to `static/`.
 
 ### Deployment & Distribution (v1.3.0)
@@ -40,7 +44,8 @@ Durable state summary and context handover for AI coding agents and developers.
 ## 3. Key Decisions & Rationale
 
 - **Self-Generating Encryption Key**: If `HKBU_GATEWAY_ENCRYPTION_KEY` is not provided in environment, `credentials.py` generates a 32-byte Fernet key and persists it to `hkbu_gateway.key` next to the database file. This ensures seamless local zero-config runs without manual `.env` file setup.
-- **Prompt Emulation for Gated Tools**: Upstream HKBU endpoints for Qwen and Llama do not natively expose tool parameter schemas; the gateway injects standard tool schemas into system instructions and parses JSON output on the fly.
+- **Edge Protocol Normalization for Agents**: Coding agents like VS Code Copilot and Cline send Anthropic-style nested arrays (`[{"type": "tool_result", ...}]`) and strict-unsupported params (`temperature` on `o3-mini`). Rather than requiring agents to modify their internal schemas, the gateway acts as an edge protocol stabilizer that transparently normalizes requests before proxying to HKBU.
+- **Prompt & XML Emulation for Gated Tools**: Upstream HKBU endpoints for DeepSeek, Qwen, and Llama do not natively expose tool parameter schemas; the gateway injects standard tool schemas into system instructions and parses both JSON blocks and XML tags (`<read_file>`, `<Explore>`, etc.) on the fly.
 - **Frontend Build Mirroring**: `frontend/package.json` builds to `../static/index.html` and automatically copies to `../static/hkbuapi4agent.html` to support legacy paths and direct bookmarking.
 
 ## 4. Current Environment & Active Resources
