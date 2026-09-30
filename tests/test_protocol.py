@@ -1,5 +1,63 @@
 from hkbu_gateway.registry import find_model
 from hkbu_gateway.protocol import ChatCompletionRequest
+import json
+import pytest
+
+
+@pytest.mark.parametrize("model", ["qwen-plus", "qwen3-max", "Qwen-3-max"])
+def test_qwen_history_is_visible_to_last_user_only_upstream(model):
+    from hkbu_gateway.app import upstream_payload
+
+    request = ChatCompletionRequest(model=model, messages=[
+        {"role": "system", "content": "Follow workspace rules."},
+        {"role": "user", "content": "Remember ORCHID."},
+        {"role": "assistant", "content": "I will remember ORCHID."},
+        {"role": "developer", "content": "Reply briefly."},
+        {"role": "user", "content": "What was the marker?"},
+    ])
+    prepared = upstream_payload(request, model)
+    messages = prepared["messages"]
+    assert [m["role"] for m in messages] == ["system", "system", "user"]
+    assert messages[0]["content"] == "Follow workspace rules."
+    assert messages[1]["content"] == "Reply briefly."
+    assert "ORCHID" in messages[-1]["content"]
+    assert '"role":"assistant"' in messages[-1]["content"]
+    assert messages[-1]["content"].endswith("What was the marker?")
+    assert request.messages[3].role == "developer"
+
+
+def test_qwen_tool_results_survive_last_user_only_upstream():
+    from hkbu_gateway.app import upstream_payload
+
+    messages = [
+        {"role": "user", "content": "Read x and edit it."},
+        {"role": "assistant", "content": None, "tool_calls": [{
+            "id": "call_read", "type": "function",
+            "function": {"name": "read_file", "arguments": '{"path":"x"}'},
+        }]},
+        {"role": "tool", "tool_call_id": "call_read", "content": "ORCHID"},
+    ]
+    prepared = upstream_payload(ChatCompletionRequest(model="qwen-plus", messages=messages), "qwen-plus")
+    assert len(prepared["messages"]) == 1
+    content = prepared["messages"][0]["content"]
+    transcript = json.loads(content.split("\n", 1)[1].split("\n\nCurrent user request", 1)[0])
+    assert transcript == messages
+    assert content.endswith("Continue the latest user request using the tool results above.")
+
+
+@pytest.mark.parametrize("model", ["gpt-4.1", "gemini-2.5-flash", "llama-4-maverick", "deepseek-v4-flash"])
+def test_qwen_history_workaround_does_not_change_other_models(model):
+    from hkbu_gateway.app import upstream_payload
+
+    messages = [{"role": "user", "content": "Remember ORCHID."}, {"role": "assistant", "content": "OK"}, {"role": "user", "content": "Recall it."}]
+    assert upstream_payload(ChatCompletionRequest(model=model, messages=messages), model)["messages"] == messages
+
+
+def test_qwen_single_turn_does_not_add_transcript_tokens():
+    from hkbu_gateway.app import upstream_payload
+
+    messages = [{"role": "system", "content": "Follow instructions."}, {"role": "user", "content": "Hi"}]
+    assert upstream_payload(ChatCompletionRequest(model="qwen-plus", messages=messages), "qwen-plus")["messages"] == messages
 
 
 def test_registry_contains_documented_models():
@@ -74,5 +132,4 @@ def test_upstream_payload_sanitizes_empty_and_whitespace_content():
     assert payload["messages"][3]["content"] == "(success)"  # tool None -> (success)
     assert payload["messages"][4]["content"] == "(success)"  # tool empty list -> (success)
     assert payload["messages"][5]["content"] == " "  # assistant without tool_calls whitespace -> " "
-
 

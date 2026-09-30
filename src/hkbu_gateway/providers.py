@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import time
+import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -184,7 +186,8 @@ class HKBUProvider:
         tool_stream_filter: EmulatedToolStreamFilter | None = None
         if emulate:
             payload, original_tools = prepare_emulated_payload(payload)
-            tool_stream_filter = EmulatedToolStreamFilter(original_tools, model)
+            if original_tools:
+                tool_stream_filter = EmulatedToolStreamFilter(original_tools, model)
 
         think_filter = ThinkStreamFilter()
         last_chunk_template: dict[str, Any] | None = None
@@ -262,9 +265,16 @@ class HKBUProvider:
                                 "model": model,
                                 "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
                             }
-                            yield f"data: {json.dumps(chunk1)}\n\n".encode()
-                            yield f"data: {json.dumps(chunk2)}\n\n".encode()
-                            yield b"data: [DONE]\n\n"
+                            if tool_stream_filter:
+                                for chunk in (chunk1, chunk2):
+                                    for event in tool_stream_filter.process_chunk(f"data: {json.dumps(chunk)}"):
+                                        yield event
+                                for event in tool_stream_filter.flush_done():
+                                    yield event
+                            else:
+                                yield f"data: {json.dumps(chunk1)}\n\n".encode()
+                                yield f"data: {json.dumps(chunk2)}\n\n".encode()
+                                yield b"data: [DONE]\n\n"
                             return
                     except Exception:
                         pass
@@ -416,6 +426,8 @@ class HKBUProvider:
                             if not has_emitted_role and not delta.get("role") and not finish_reason:
                                 delta["role"] = "assistant"
                                 has_emitted_role = True
+                            if delta.get("role") and "content" not in delta:
+                                delta["content"] = ""
                             synthetic_line = f"data: {json.dumps(chunk_obj)}"
                             if emulate and tool_stream_filter:
                                 for chunk_bytes in tool_stream_filter.process_chunk(synthetic_line):
@@ -499,4 +511,3 @@ class HKBUProvider:
             })
             yield f"data: {error_json}\n\n".encode()
             yield b"data: [DONE]\n\n"
-

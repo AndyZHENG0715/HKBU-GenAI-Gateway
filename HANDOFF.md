@@ -2,12 +2,15 @@
 
 Durable state summary and context handover for AI coding agents and developers.
 
+Last updated: **2026-09-30**. Read [the latest incident handoff](#6-latest-incident-handoff-2026-09-30) before changing request preprocessing or tool emulation.
+
 ## 1. Project State
 
-- **Current Version**: `1.3.1`
+- **Current Version**: `1.3.3`
 - **Active Branch**: `main`
-- **Test Status**: 20/20 passing (`PYTHONPATH=src pytest`)
-- **Local Service**: Gateway daemon is active and listening on `http://0.0.0.0:8000` (PID managed, hot-reload active).
+- **Test Status**: 71 passing in the latest full run (`PYTHONPATH=src pytest`); two dependency deprecation warnings.
+- **Local Service**: Started in this session on `http://127.0.0.1:8000`, without hot reload. Both localhost health checks and Node `fetch` returned HTTP 200. This is a runtime snapshot, not a guarantee that a persistent daemon is installed.
+- **User Verification**: After restart, the user reported that the Copilot issue appeared resolved. A complete original Copilot request has not been captured/replayed.
 
 ## 2. Completed Milestones
 
@@ -53,19 +56,95 @@ Durable state summary and context handover for AI coding agents and developers.
 - **Virtual Environment**: `.venv/` in repository root.
 - **Database**: `hkbu_gateway.db` in repository root (WAL mode, SQLite).
 - **Key**: `hkbu_gateway.key` in repository root (0600 permissions).
-- **Daemon Process**: Uvicorn running on `http://0.0.0.0:8000`. Test endpoint: `curl -s http://127.0.0.1:8000/healthz`.
+- **Local Process**: Started with `PYTHONPATH=src .venv/bin/python -m uvicorn hkbu_gateway.app:app --host 127.0.0.1 --port 8000 --no-access-log`. This process has no hot reload; restart it after code changes. Check the port before starting a second instance.
 
 ## 5. Next Steps for Incoming Agents
 
 1. **Verify Baseline Health**:
    ```bash
+   source .venv/bin/activate
    PYTHONPATH=src pytest
-   curl -s http://127.0.0.1:8000/healthz
+   curl --noproxy '*' -sS --connect-timeout 3 http://127.0.0.1:8000/healthz
    ```
 2. **Potential Areas for Enhancement**:
+   - Prioritize the outstanding validation and logging work in the latest incident handoff below.
    - Add token usage estimation / metering for streamed responses if requested.
    - Add rate-limiting middleware if deployment exposed to public network.
    - Add health check probe in `docker-compose.yml` (`healthcheck` block).
 3. **Rules to Preserve**:
    - Keep `from __future__ import annotations` on all new Python source files.
    - Maintain the 5-file version bump rule (`VERSION`, `pyproject.toml`, `__init__.py`, `frontend/package.json`, `CHANGELOG.md`).
+
+## 6. Latest Incident Handoff: 2026-09-30
+
+### Goal and symptoms
+
+Students should be able to use their university credentials through an OpenAI-compatible endpoint in their own coding tools. Preserve gateway tool emulation for providers whose native tool support is gated by HKBU.
+
+In VS Code Copilot Chat, switching from Gemini to Qwen after a decimal-comparison answer caused short follow-up questions to return only `GitHub Copilot`. HTTP 200, SSE finish events, and `[DONE]` were present; the reported upstream text itself was the name. Later, Copilot reported a separate connection timeout to `localhost:8000`.
+
+### Verified facts and decisions
+
+| Evidence | Decision |
+| --- | --- |
+| Saved school documentation enables native tools for Azure GPT (streaming and non-streaming) and Gemini (non-streaming); other providers are gated. Shared Swagger tool schemas do not establish provider support. | Keep prompt-based tool emulation. |
+| Both Qwen deployments accepted two system messages and followed both marker instructions. | Withdraw the initially attempted system-message merge; preserve independent system messages. |
+| Both rejected developer with HTTP 400 and the allowlist `system, user, assistant, tool, function`. | Map developer to system only in the verified Qwen request path. This loses the native distinction between these roles. |
+| Full ORCHID recall history and the final user question alone each reported 23 input tokens and failed recall. The same result held without an assistant turn. | Treat the tested HKBU Qwen interfaces as behaving as if only the latest user turn is retained. Do not claim knowledge of the school's internal implementation. |
+| Embedding history in the final user content restored ORCHID recall on both models (47 input tokens). The actual repaired gateway encoding also passed on both (83 input tokens). | Apply a history transcript workaround to `qwen-plus` and `qwen3-max`, including canonicalized aliases. Do not extend it to other models without evidence. |
+| Separate and merged synthetic Copilot prompts both produced generic confirmations rather than correcting the historical decimal answer. | Prompt consolidation did not solve history loss. The precise original name-only trigger remains unisolated. |
+| Port 8000 had no listener; localhost health connections timed out. Starting Uvicorn restored curl and Node `fetch` health checks. | Diagnose local connection failures separately from upstream/model behavior. No school tokens are needed for health checks. |
+
+Sources: [live verification report](docs/qwen-live-verification.md), [exact synthetic request/response evidence](docs/qwen-live-probes.json), and [provider documentation](docs/providers.md). No credentials are included in these artifacts.
+
+### Final implementation and ownership
+
+| File | Current behavior |
+| --- | --- |
+| `src/hkbu_gateway/app.py` | `_prepare_qwen_messages`, called by `upstream_payload` after content sanitization, maps Qwen developer roles and encodes earlier dialogue in compact JSON inside the final user message. If the final turn is a tool result, includes the result and requests continuation of the original task. Ordinary single-turn requests add no transcript overhead. Adds the missing `json` import used by preprocessing. |
+| `src/hkbu_gateway/tools.py` | Keeps client instructions separate and inserts a separate gateway system protocol. Uses compact tool definitions. Preserves historical call IDs and resolves tool result names, removes synthetic instructions to immediately answer, handles legacy function calls, and removes `parallel_tool_calls`. `tool_choice: "none"` omits schemas and disables response conversion. |
+| `src/hkbu_gateway/providers.py` | Does not create a tool stream filter when no active tools remain. Routes JSON responses received for streaming requests through tool conversion; adds missing `time`/`uuid` imports for that path. |
+| `tests/test_protocol.py`, `tests/test_tools.py` | Cover Qwen history and tool-result preservation, aliases, no single-turn overhead, unchanged other-model requests, 24-tool Copilot-like requests, streaming/non-streaming conversion, disabled tools, and literal-name text passthrough. Large catalogs are tested locally, not against the school quota. |
+
+Important boundary: calling `HKBUProvider.chat`/`chat_stream` directly bypasses `app.upstream_payload` and therefore bypasses Qwen history normalization. Live probes for the fix explicitly used `upstream_payload`. Keep that preprocessing when writing new routes or diagnostic scripts.
+
+Historical roles and tool IDs are represented as transcript data, not native message roles. System messages are moved ahead of that transcript in multi-turn Qwen requests; interleaved instruction timing and developer priority cannot be represented exactly. The workaround fixes measured context loss, not model arithmetic quality: both models also answered the single-turn decimal question incorrectly.
+
+### Validation and token budget
+
+- Latest full local run: **71 passed, 2 dependency warnings**. TestClient hung at event-loop startup in this environment's restricted sandbox; the same suite completed outside the sandbox. This was not a test assertion failure.
+- Live role/history probes are already recorded. Do not rerun the whole matrix unless an upstream change or regression warrants it.
+- The user explicitly requests low school-token consumption. Use tiny deterministic marker questions, few calls, and synthetic prompts. Test large tool catalogs and ordinary protocol behavior with mocks first.
+- **820 tokens** were reported by responses containing usage. Five streaming responses omitted usage, so this is a partial total, not the complete billed amount. No long cache-prefix experiment was performed; cache activation/hit rate remains unknown.
+- `max_tokens: 32` returned 113 completion tokens in one Qwen Plus response. Do not assume this field reliably caps school usage. Avoid open-ended probes; validate any proposed replacement limit before relying on it.
+- Live probe script was temporary (`/tmp/hkbu-role-probe/probe.py`); it is not a maintained repository tool. The durable evidence is in `docs/`. Do not assume the temporary script survives future sessions.
+
+### Outstanding work, in priority order
+
+1. Verify a real coding-tool cycle: request a small file read, return the tool result, continue with another tool or a final answer. Current mocks and live recall probes do not establish real multi-step tool success. Use only a few short calls if live validation is needed.
+2. Remove or gate the existing content-printing debug wrapper in `app.chat_completions` before distributing a release. It prints message prefixes and the first SSE events even when Uvicorn access logging is disabled. These diagnostics predated the history fix and were retained during debugging; prompts/tool results may contain sensitive student data.
+3. Review history growth and truncation strategy. Transcript encoding retains all history; no new summarization or pruning policy was added. Preserve required tool-call/result pairs if a future limit is introduced.
+4. Investigate cache behavior or other providers' history/role support only when needed. Existing Qwen results cannot establish another deployment's capabilities.
+5. Review and commit the working-tree changes with a Conventional Commit. No commit or release was created in this session. Before release, perform the required five-file version cascade and update the changelog; frontend rebuilding is required only if frontend sources change.
+
+Keep SQLite databases, Fernet keys, `.env`, and SQLite `-wal`/`-shm` sidecars out of commits. `.gitignore` currently ignores `*.db`/`*.key`, but does not explicitly ignore the sidecar names; check `git status` before staging.
+
+### Quick resume commands
+
+Run from the repository root:
+
+```bash
+source .venv/bin/activate
+git status --short
+PYTHONPATH=src pytest
+ss -ltnp 'sport = :8000'
+curl --noproxy '*' -sS --connect-timeout 3 http://127.0.0.1:8000/healthz
+```
+
+If no gateway is listening, start it in a dedicated terminal:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m uvicorn hkbu_gateway.app:app --host 127.0.0.1 --port 8000 --no-access-log
+```
+
+The local instance uses the existing repository database/key by default. Do not delete, regenerate, or print them during troubleshooting. VS Code's remote Copilot extension must reach port 8000 in the same remote environment; localhost health checks should run there as well.

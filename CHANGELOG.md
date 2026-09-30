@@ -5,6 +5,21 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2026-09-30
+
+### Fixed
+
+- **Qwen Multi-Turn Conversation History Workaround (`app.py`)**:
+  - Resolved an issue where upstream HKBU Qwen deployments (`qwen-plus`, `qwen3-max`) silently dropped multi-turn conversation history and only retained the final user turn, causing short follow-ups to echo client identity names (such as "GitHub Copilot").
+  - Implemented `_prepare_qwen_messages` to encode prior dialogue into a structured, compact JSON transcript within the final user turn while retaining separate system messages.
+  - Automatically mapped unsupported `developer` roles to `system` on the Qwen path.
+- **Stream Initial Chunk Standard Alignment (`providers.py`, `tools.py`)**:
+  - Ensured initial stream chunks with `role: "assistant"` always include `"content": ""` per OpenAI specification, allowing clients like VS Code Copilot to properly initialize the text accumulator.
+- **Tool Protocol Architecture Hardening (`tools.py`)**:
+  - Injected gateway tool calling instructions as a distinct system message, keeping client instructions unmutated.
+  - Preserved historical tool call IDs and mapped tool results back to function names.
+  - Cleaned up unparsed `parallel_tool_calls` parameter and supported `tool_choice: "none"`.
+
 ## [1.3.2] - 2026-09-30
 
 ### Fixed
