@@ -11,3 +11,5 @@ build/
 *.egg-info/
 node_modules/
 frontend/dist/
+data/
+

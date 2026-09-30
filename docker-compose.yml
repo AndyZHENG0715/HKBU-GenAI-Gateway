@@ -1,0 +1,11 @@
+services:
+  gateway:
+    build: .
+    container_name: hkbu-genai-gateway
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - HKBU_DATABASE_PATH=/app/data/hkbu_gateway.db
+    restart: unless-stopped

@@ -31,9 +31,40 @@ Students and researchers can convert their university platform key into standard
 
 ## 🚀 Quick Start
 
-Requires Python 3.11+ and uv or pip.
+### ⚡ 1. One-Click Quick Start (一键启动，零门槛)
 
-### 1. Install & Run Locally
+The repository provides cross-platform startup scripts that automatically set up the virtual environment, install dependencies, launch the server, and open your browser:
+
+- **🍎 macOS / 🐧 Linux**:
+  ```bash
+  git clone https://github.com/AndyZHENG0715/HKBU-GenAI-Gateway.git
+  cd HKBU-GenAI-Gateway
+  ./start.sh
+  ```
+  *(On macOS, you can also directly double-click `start.command` in Finder)*
+
+- **🪟 Windows**:
+  ```cmd
+  git clone https://github.com/AndyZHENG0715/HKBU-GenAI-Gateway.git
+  cd HKBU-GenAI-Gateway
+  start.bat
+  ```
+  *(Or directly double-click `start.bat` in File Explorer)*
+
+- **🐳 Docker**:
+  ```bash
+  git clone https://github.com/AndyZHENG0715/HKBU-GenAI-Gateway.git
+  cd HKBU-GenAI-Gateway
+  docker compose up -d
+  ```
+
+Once started, open `http://localhost:8000/` (or `http://localhost:8000/hkbuapi4agent.html`) in your browser to access the developer portal and playground.
+
+---
+
+### 🛠️ 2. Developer Manual Setup (开发调试)
+
+Requires Python 3.9+ and pip or uv:
 
 ```bash
 # Clone the repository
@@ -42,21 +73,24 @@ cd HKBU-GenAI-Gateway
 
 # Create virtual environment and install dependencies
 python3 -m venv .venv
-source .venv/bin/activate   # On Windows: .venv\Scripts\Activate.ps1
+source .venv/bin/activate   # On Windows: .venv\Scripts\activate
+
+# Install in editable mode
 pip install -e ".[dev]"
 
-# Start the gateway server (zero-config, key auto-generated)
+# Start the gateway server with hot reload
 uvicorn hkbu_gateway.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Open `http://localhost:8000/` (or `http://localhost:8000/hkbuapi4agent.html`) in your browser to access the developer portal and playground.
+---
 
-### 2. Cloud Deployment (Railway, Render, Docker)
+### ☁️ 3. Cloud Deployment (Railway, Render, Custom Hosts)
 
-The repository includes a root `Procfile` and `requirements.txt` for 1-click zero-config cloud deployments:
+The repository includes a root `Procfile`, `Dockerfile`, `docker-compose.yml`, and `requirements.txt` for 1-click zero-config cloud deployments:
 
 - **Railway**: Connect your GitHub repository or run `railway up`. No mandatory environment variables are needed; encryption keys and the SQLite database will be initialized automatically.
-- **Docker / Custom Hosts**:
+- **Docker**: Run `docker compose up -d`. Persistent data and keys are saved in `./data`.
+- **Custom Linux VM / VPS**:
   ```bash
   pip install -r requirements.txt
   PYTHONPATH=src uvicorn hkbu_gateway.app:app --host 0.0.0.0 --port ${PORT:-8000}
