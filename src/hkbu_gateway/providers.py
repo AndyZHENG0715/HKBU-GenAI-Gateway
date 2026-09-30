@@ -215,13 +215,6 @@ class HKBUProvider:
                         yield b"\n"
                         continue
 
-                    if emulate and tool_stream_filter:
-                        for chunk_bytes in tool_stream_filter.process_chunk(line):
-                            yield chunk_bytes
-                        if line.strip() == "data: [DONE]":
-                            return
-                        continue
-
                     if not line.startswith("data: "):
                         yield f"{line}\n".encode()
                         continue
@@ -232,13 +225,31 @@ class HKBUProvider:
                         for kind, piece in think_filter.flush():
                             if last_chunk_template and piece:
                                 c = dict(last_chunk_template)
-                                c["choices"] = [{
-                                    "index": 0,
-                                    "delta": {kind: piece},
-                                    "finish_reason": None,
-                                }]
-                                yield f"data: {json.dumps(c)}\n\n".encode()
-                        yield b"data: [DONE]\n\n"
+                                if kind == "reasoning_content":
+                                    c["choices"] = [{
+                                        "index": 0,
+                                        "delta": {"reasoning_content": piece},
+                                        "finish_reason": None,
+                                    }]
+                                    yield f"data: {json.dumps(c)}\n\n".encode()
+                                else:
+                                    c["choices"] = [{
+                                        "index": 0,
+                                        "delta": {"content": piece},
+                                        "finish_reason": None,
+                                    }]
+                                    if emulate and tool_stream_filter:
+                                        synthetic_line = f"data: {json.dumps(c)}"
+                                        for chunk_bytes in tool_stream_filter.process_chunk(synthetic_line):
+                                            yield chunk_bytes
+                                    else:
+                                        yield f"data: {json.dumps(c)}\n\n".encode()
+
+                        if emulate and tool_stream_filter:
+                            for chunk_bytes in tool_stream_filter.flush_done():
+                                yield chunk_bytes
+                        else:
+                            yield b"data: [DONE]\n\n"
                         return
 
                     try:
@@ -257,18 +268,39 @@ class HKBUProvider:
                                 for kind, piece in events:
                                     c = dict(chunk_obj)
                                     new_delta = dict(delta)
-                                    new_delta.pop("content", None)
-                                    new_delta[kind] = piece
-                                    c["choices"] = [{
-                                        **choices[0],
-                                        "delta": new_delta,
-                                    }]
-                                    yield f"data: {json.dumps(c)}\n\n".encode()
+                                    if kind == "reasoning_content":
+                                        new_delta.pop("content", None)
+                                        new_delta["reasoning_content"] = piece
+                                        c["choices"] = [{
+                                            **choices[0],
+                                            "delta": new_delta,
+                                        }]
+                                        yield f"data: {json.dumps(c)}\n\n".encode()
+                                    else:
+                                        new_delta["content"] = piece
+                                        c["choices"] = [{
+                                            **choices[0],
+                                            "delta": new_delta,
+                                        }]
+                                        synthetic_line = f"data: {json.dumps(c)}"
+                                        if emulate and tool_stream_filter:
+                                            for chunk_bytes in tool_stream_filter.process_chunk(synthetic_line):
+                                                yield chunk_bytes
+                                        else:
+                                            yield f"{synthetic_line}\n\n".encode()
                                 continue
-                        # If not content chunk, pass through
-                        yield f"{line}\n".encode()
+
+                        if emulate and tool_stream_filter:
+                            for chunk_bytes in tool_stream_filter.process_chunk(line):
+                                yield chunk_bytes
+                        else:
+                            yield f"{line}\n\n".encode()
                     except Exception:
-                        yield f"{line}\n".encode()
+                        if emulate and tool_stream_filter:
+                            for chunk_bytes in tool_stream_filter.process_chunk(line):
+                                yield chunk_bytes
+                        else:
+                            yield f"{line}\n\n".encode()
 
                 if emulate and tool_stream_filter and tool_stream_filter.buffer:
                     for chunk_bytes in tool_stream_filter.flush_done():

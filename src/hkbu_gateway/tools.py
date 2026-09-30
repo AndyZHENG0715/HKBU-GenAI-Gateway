@@ -193,7 +193,93 @@ def extract_tool_calls(
         except Exception:
             continue
 
+    # 4. XML / Tag-based tool calls (e.g. DeepSeek / Anthropic format: <read_file> or <tool_call>)
+    xml_results = _extract_xml_tool_calls(text, known_names, known_tools)
+    if xml_results:
+        return xml_results
+
     return None
+
+
+def _extract_xml_tool_calls(
+    text: str, known_names: set[str | None], known_tools: list[dict[str, Any]]
+) -> list[dict[str, Any]] | None:
+    results: list[dict[str, Any]] = []
+
+    # 1. Generic tool_call tag: <tool_call> ... </tool_call>
+    generic_blocks = re.findall(r"<tool_call>([\s\S]*?)</tool_call>", text, re.IGNORECASE)
+    for block in generic_blocks:
+        name_match = re.search(r"<(?:name|function)>([\s\S]*?)</(?:name|function)>", block, re.IGNORECASE)
+        arg_match = re.search(r"<(?:arguments|parameters)>([\s\S]*?)</(?:arguments|parameters)>", block, re.IGNORECASE)
+        if name_match:
+            fn_name = name_match.group(1).strip()
+            if fn_name in known_names:
+                args_raw = arg_match.group(1).strip() if arg_match else "{}"
+                try:
+                    args = json.loads(args_raw)
+                except Exception:
+                    args = {"input": args_raw}
+                results.append(_format_tool_call(fn_name, args))
+
+    if results:
+        return results
+
+    # 2. Named tool tag: <{name}> ... </{name}>
+    for name in known_names:
+        if not name:
+            continue
+        pattern = rf"<({re.escape(name)})>([\s\S]*?)</\1>"
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        for matched_name, body in matches:
+            body_str = body.strip()
+            args: dict[str, Any] = {}
+
+            # Try JSON inside tag
+            try:
+                args = json.loads(body_str)
+                if isinstance(args, dict):
+                    results.append(_format_tool_call(name, args))
+                    continue
+            except Exception:
+                pass
+
+            # Try sub-tags: <param>value</param>
+            sub_tags = re.findall(r"<([a-zA-Z0-9_-]+)>([\s\S]*?)</\1>", body_str)
+            if sub_tags:
+                for tag, val in sub_tags:
+                    args[tag] = val.strip()
+                results.append(_format_tool_call(name, args))
+                continue
+
+            # Try Markdown bold key-values: **Key:** Value
+            md_kvs = re.findall(r"\*\*([a-zA-Z0-9_-]+):\*\*\s*([^\*]+)", body_str)
+            if md_kvs:
+                for k, v in md_kvs:
+                    args[k.strip().lower()] = v.strip()
+                results.append(_format_tool_call(name, args))
+                continue
+
+            # Fallback: assign to primary parameter
+            tool_def = next(
+                (
+                    t for t in known_tools
+                    if (isinstance(t, dict) and (t.get("name") == name or t.get("function", {}).get("name") == name))
+                ),
+                None,
+            )
+            if tool_def and isinstance(tool_def, dict):
+                fn_schema = tool_def.get("function", tool_def) if "function" in tool_def else tool_def
+                params = list(fn_schema.get("parameters", {}).get("properties", {}).keys())
+                if params:
+                    args[params[0]] = body_str
+                else:
+                    args["input"] = body_str
+            else:
+                args["input"] = body_str
+
+            results.append(_format_tool_call(name, args))
+
+    return results if results else None
 
 
 def _normalize_tool_calls_object(
@@ -302,6 +388,10 @@ class EmulatedToolStreamFilter:
                     stripped.startswith("```")
                     or stripped.startswith("{")
                     or stripped.startswith("[")
+                    or (
+                        stripped.startswith("<")
+                        and not stripped.startswith(("<think>", "<thought>", "<thinking>", "<reasoning>"))
+                    )
                 ):
                     self.is_determined = True
                     self.is_tool_call_candidate = True

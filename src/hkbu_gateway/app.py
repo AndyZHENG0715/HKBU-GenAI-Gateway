@@ -274,13 +274,119 @@ def validate_model(model_id: str, kind: str):
     return model
 
 
-def upstream_payload(request: BaseModel) -> dict[str, Any]:
+def _sanitize_message_content(msg: dict[str, Any]) -> None:
+    """Ensure message content conforms to upstream HKBU requirements.
+    Must be either a string, null (for assistant tool_calls), or an array of
+    content objects strictly with type 'text' or 'image_url'.
+    """
+    content = msg.get("content")
+    role = msg.get("role", "")
+    has_tool_calls = bool(msg.get("tool_calls"))
+
+    # 1. Null / None content
+    if content is None:
+        if role == "assistant" and has_tool_calls:
+            msg["content"] = None
+        else:
+            msg["content"] = ""
+        return
+
+    # 2. Already string
+    if isinstance(content, str):
+        return
+
+    # 3. List of content objects (VS Code / Copilot / multimodal)
+    if isinstance(content, list):
+        if len(content) == 0:
+            msg["content"] = None if (role == "assistant" and has_tool_calls) else ""
+            return
+
+        has_image = any(
+            isinstance(item, dict) and item.get("type") == "image_url"
+            for item in content
+        )
+
+        if has_image:
+            sanitized_parts = []
+            for item in content:
+                if isinstance(item, str):
+                    sanitized_parts.append({"type": "text", "text": item})
+                elif isinstance(item, dict):
+                    itype = item.get("type")
+                    if itype == "image_url":
+                        sanitized_parts.append(item)
+                    elif itype == "text":
+                        text_val = item.get("text") or item.get("value") or ""
+                        sanitized_parts.append({"type": "text", "text": str(text_val)})
+                    else:
+                        text_val = (
+                            item.get("text")
+                            or item.get("value")
+                            or item.get("content")
+                            or json.dumps(item, ensure_ascii=False)
+                        )
+                        sanitized_parts.append({"type": "text", "text": str(text_val)})
+                else:
+                    sanitized_parts.append({"type": "text", "text": str(item)})
+            msg["content"] = sanitized_parts
+        else:
+            # No images: flatten parts into a single string for maximum upstream compatibility
+            text_pieces = []
+            for item in content:
+                if isinstance(item, str):
+                    text_pieces.append(item)
+                elif isinstance(item, dict):
+                    text_val = (
+                        item.get("text")
+                        or item.get("value")
+                        or item.get("content")
+                        or ""
+                    )
+                    if not text_val and item.get("type") not in ("text", "image_url"):
+                        text_val = json.dumps(item, ensure_ascii=False)
+                    text_pieces.append(str(text_val))
+                else:
+                    text_pieces.append(str(item))
+            msg["content"] = "".join(text_pieces)
+        return
+
+    # 4. Dict content
+    if isinstance(content, dict):
+        if content.get("type") == "image_url":
+            msg["content"] = [content]
+        else:
+            text_val = (
+                content.get("text")
+                or content.get("value")
+                or content.get("content")
+                or json.dumps(content, ensure_ascii=False)
+            )
+            msg["content"] = str(text_val)
+        return
+
+    # 5. Fallback for primitives
+    msg["content"] = str(content)
+
+
+def upstream_payload(request: BaseModel, model_id: str | None = None) -> dict[str, Any]:
     payload = request.model_dump(exclude_none=True)
     payload.pop("model", None)
+
     if "messages" in payload and isinstance(payload["messages"], list):
         for msg in payload["messages"]:
-            if "content" not in msg or msg["content"] is None:
-                msg["content"] = ""
+            if isinstance(msg, dict):
+                _sanitize_message_content(msg)
+
+    if model_id:
+        # Reasoning models (o1, o3-mini) reject temperature, top_p, and penalties
+        if model_id.startswith(("o1", "o3")):
+            payload.pop("temperature", None)
+            payload.pop("top_p", None)
+            payload.pop("presence_penalty", None)
+            payload.pop("frequency_penalty", None)
+            if "max_tokens" in payload and "max_completion_tokens" not in payload:
+                payload["max_completion_tokens"] = payload.pop("max_tokens")
+
     return payload
 
 
@@ -293,7 +399,7 @@ async def chat_completions(
 ):
     model = validate_model(request.model, "chat")
     provider: HKBUProvider = http_request.app.state.provider
-    payload = upstream_payload(request)
+    payload = upstream_payload(request, model.id)
     payload["model"] = model.id
     try:
         if request.stream:

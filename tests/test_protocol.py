@@ -15,3 +15,35 @@ def test_chat_request_keeps_openai_shape():
     )
     assert request.model == "deepseek-v4-flash"
     assert request.messages[0].content == "hello"
+
+
+def test_upstream_payload_sanitizes_content_and_reasoning_params():
+    from hkbu_gateway.app import upstream_payload
+
+    # VS Code / Copilot sends complex list of parts
+    request = ChatCompletionRequest(
+        model="o3-mini",
+        messages=[
+            {"role": "user", "content": [{"type": "text", "value": "check file"}]},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "read", "arguments": "{}"}}],
+            },
+            {"role": "tool", "content": [{"type": "tool_result", "content": "file data"}], "tool_call_id": "call_1"},
+        ],
+        temperature=0.7,
+        top_p=0.9,
+    )
+
+    payload = upstream_payload(request, "o3-mini")
+
+    # Reasoning parameters stripped
+    assert "temperature" not in payload
+    assert "top_p" not in payload
+
+    # Message content sanitized
+    assert payload["messages"][0]["content"] == "check file"
+    assert payload["messages"][1]["content"] is None  # assistant tool_calls
+    assert payload["messages"][2]["content"] == "file data"
+

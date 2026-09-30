@@ -27,18 +27,19 @@ SAMPLE_TOOLS = [
 
 
 def test_is_tool_emulation_required():
-    # Emulation required for Qwen and Llama when tools present
+    # Emulation required for Qwen, Llama, and DeepSeek when tools present
     assert is_tool_emulation_required("qwen3-max", {"tools": SAMPLE_TOOLS}) is True
     assert is_tool_emulation_required("qwen-plus", {"tools": SAMPLE_TOOLS}) is True
     assert is_tool_emulation_required("llama-4-maverick", {"tools": SAMPLE_TOOLS}) is True
+    assert is_tool_emulation_required("deepseek-v4-flash", {"tools": SAMPLE_TOOLS}) is True
+    assert is_tool_emulation_required("deepSeek-V4-Pro-hkbu", {"tools": SAMPLE_TOOLS}) is True
 
     # Not required when tools list is empty or missing
     assert is_tool_emulation_required("qwen3-max", {"tools": []}) is False
     assert is_tool_emulation_required("qwen3-max", {}) is False
 
-    # Not required for native tool calling models
+    # Not required for native tool calling models (Azure OpenAI, Gemini)
     assert is_tool_emulation_required("gpt-4.1", {"tools": SAMPLE_TOOLS}) is False
-    assert is_tool_emulation_required("deepseek-v4-flash", {"tools": SAMPLE_TOOLS}) is False
     assert is_tool_emulation_required("gemini-2.5-flash", {"tools": SAMPLE_TOOLS}) is False
 
 
@@ -180,3 +181,43 @@ def test_emulated_stream_filter_regular_text():
     assert len(content_chunks) >= 2
     assert content_chunks[0]["choices"][0]["delta"]["content"] == "The "
     assert content_chunks[1]["choices"][0]["delta"]["content"] == "weather is nice."
+
+
+def test_extract_xml_tool_calls():
+    # Test DeepSeek / Anthropic tag-based XML tool call
+    xml_text = "<read_file><file>/home/andy/project/AGENTS.md</file></read_file>"
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "parameters": {"properties": {"file": {"type": "string"}}},
+            },
+        }
+    ]
+    res = extract_tool_calls(xml_text, tools)
+    assert res is not None
+    assert len(res) == 1
+    assert res[0]["function"]["name"] == "read_file"
+    args = json.loads(res[0]["function"]["arguments"])
+    assert args["file"] == "/home/andy/project/AGENTS.md"
+
+    # Test Markdown bold key-values
+    xml_text2 = "<Explore> **What:** Explore folder thoroughly **Thoroughness:** thorough </Explore>"
+    tools2 = [
+        {
+            "type": "function",
+            "function": {
+                "name": "Explore",
+                "parameters": {"properties": {"what": {"type": "string"}, "thoroughness": {"type": "string"}}},
+            },
+        }
+    ]
+    res2 = extract_tool_calls(xml_text2, tools2)
+    assert res2 is not None
+    assert len(res2) == 1
+    assert res2[0]["function"]["name"] == "Explore"
+    args2 = json.loads(res2[0]["function"]["arguments"])
+    assert args2["what"] == "Explore folder thoroughly"
+    assert args2["thoroughness"] == "thorough"
+
