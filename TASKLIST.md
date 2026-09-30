@@ -23,11 +23,11 @@ Target Version: **`2.0.0`** (SemVer major bump: Agentic Playground evolution).
 - [x] **Commit 1**: `feat(agent): define agent types and enable streaming tool call protocol`
 
 ### Milestone 2: Tier 1 - In-Browser Sandboxed Toolsuite (Zero-Install)
-- [ ] **Task 2.1**: Implement `frontend/src/lib/agent/tools/python.ts` (Pyodide Wasm CPython 3.12 with numpy, pandas, stdout/stderr interception, and Matplotlib chart extraction).
-- [ ] **Task 2.2**: Implement `frontend/src/lib/agent/tools/browserFs.ts` (Browser File System Access API: directory picker, list files, read file, write file).
-- [ ] **Task 2.3**: Implement `frontend/src/lib/agent/tools/webFetch.ts` and `calculator.ts` (safe web page text extractor and mathematical evaluator).
-- [ ] **Task 2.4**: Implement `frontend/src/lib/agent/tools/registry.ts` (tool collection, schema formatting for OpenAI `tools` DTO, execution dispatcher).
-- [ ] **Commit 2**: `feat(agent): implement browser-native tools with Pyodide and File System Access API`
+- [x] **Task 2.1**: Implement `frontend/src/lib/agent/tools/python.ts` (Pyodide Wasm CPython 3.12 with numpy, pandas, stdout/stderr interception, and Matplotlib chart extraction).
+- [x] **Task 2.2**: Implement `frontend/src/lib/agent/tools/browserFs.ts` (Browser File System Access API: directory picker, list files, read file, write file).
+- [x] **Task 2.3**: Implement `frontend/src/lib/agent/tools/webFetch.ts` and `calculator.ts` (safe web page text extractor and mathematical evaluator).
+- [x] **Task 2.4**: Implement `frontend/src/lib/agent/tools/registry.ts` (tool collection, schema formatting for OpenAI `tools` DTO, execution dispatcher).
+- [x] **Commit 2**: `feat(agent): implement browser-native tools with Pyodide and File System Access API`
 
 ### Milestone 3: Agent Core Loop Engine
 - [ ] **Task 3.1**: Implement `frontend/src/lib/agent/loop.ts` (Pi-inspired state machine: context preparation, LLM invocation, tool call detection, local dispatch, result injection, turn counter, cancellation token).
