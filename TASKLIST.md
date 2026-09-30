@@ -41,10 +41,10 @@ Target Version: **`2.0.0`** (SemVer major bump: Agentic Playground evolution).
 - [x] **Commit 4**: `feat(playground): add agent mode UI, tool cards, and progress visualization`
 
 ### Milestone 5: Tier 2 - Local Companion Bridge (Power Users)
-- [ ] **Task 5.1**: Implement standalone zero-dependency Python script `companion/hkbu_genai_companion.py` (WebSocket server on `127.0.0.1:9001`, handshake, bash execution, filesystem access).
-- [ ] **Task 5.2**: Implement `frontend/src/lib/agent/tools/localCompanion.ts` (WebSocket client, auto-discovery of local node, approval modal trigger).
-- [ ] **Task 5.3**: Add "Connect Local Terminal" guide and connection indicator to Playground UI.
-- [ ] **Commit 5**: `feat(companion): add local companion node and terminal execution bridge`
+- [x] **Task 5.1**: Implement standalone zero-dependency Python script `companion/hkbu_genai_companion.py` (WebSocket server on `127.0.0.1:9001`, handshake, bash execution, filesystem access).
+- [x] **Task 5.2**: Implement `frontend/src/lib/agent/tools/localCompanion.ts` (WebSocket client, auto-discovery of local node, approval modal trigger).
+- [x] **Task 5.3**: Add "Connect Local Terminal" guide and connection indicator to Playground UI.
+- [x] **Commit 5**: `feat(companion): add local companion node and terminal execution bridge`
 
 ### Milestone 6: Verification, Documentation & Version Cascade
 - [ ] **Task 6.1**: Rebuild frontend (`npm run build` with static asset mirroring to `static/` and `static/hkbuapi4agent.html`).

@@ -4,6 +4,8 @@ import { listDirectoryTool, readFileTool, writeFileTool } from './browserFs';
 import { webFetchTool } from './webFetch';
 import { calculatorTool } from './calculator';
 
+import { COMPANION_TOOLS } from './localCompanion';
+
 export const DEFAULT_BROWSER_TOOLS: AgentTool[] = [
   pythonTool,
   listDirectoryTool,
@@ -12,6 +14,13 @@ export const DEFAULT_BROWSER_TOOLS: AgentTool[] = [
   webFetchTool,
   calculatorTool,
 ];
+
+export function getAllAvailableTools(includeCompanion = false): AgentTool[] {
+  if (includeCompanion) {
+    return [...DEFAULT_BROWSER_TOOLS, ...COMPANION_TOOLS];
+  }
+  return DEFAULT_BROWSER_TOOLS;
+}
 
 export function formatToOpenAITools(tools: AgentTool[]): OpenAIToolDefinition[] {
   return tools.map((t) => ({

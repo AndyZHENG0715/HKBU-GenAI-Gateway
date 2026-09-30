@@ -30,7 +30,8 @@ import { ThinkingBox } from './ThinkingBox';
 import { ToolCallCard } from './ToolCallCard';
 import { ToolCallExecution } from '../lib/agent/types';
 import { runAgentLoop } from '../lib/agent/loop';
-import { DEFAULT_BROWSER_TOOLS } from '../lib/agent/tools/registry';
+import { getAllAvailableTools } from '../lib/agent/tools/registry';
+import { probeCompanion } from '../lib/agent/tools/localCompanion';
 import {
   getWorkspaceDirectoryName,
   promptSelectDirectory,
@@ -116,6 +117,13 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
   const [error, setError] = useState<string | null>(null);
   const [agentProgress, setAgentProgress] = useState<string | null>(null);
   const [workspaceDir, setWorkspaceDir] = useState<string>(() => getWorkspaceDirectoryName());
+  const [companionConnected, setCompanionConnected] = useState<boolean>(false);
+
+  useEffect(() => {
+    probeCompanion().then((res) => {
+      if (res.connected) setCompanionConnected(true);
+    });
+  }, []);
 
   // Message action states
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
@@ -267,7 +275,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
       await runAgentLoop({
         model: modelToUse,
         messages: payloadMessages,
-        tools: DEFAULT_BROWSER_TOOLS,
+        tools: getAllAvailableTools(companionConnected),
         gatewayKey: apiKey,
         maxIterations: 10,
         signal: controller.signal,
@@ -740,6 +748,29 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
               <Folder className="w-3 h-3 text-amber-500" />
               <span>File System</span>
             </span>
+            {companionConnected ? (
+              <span
+                className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-[11px] font-medium shadow-xs"
+                title="Connected to local companion node (127.0.0.1:9001). Host terminal execution active."
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Host Terminal (Node 9001)</span>
+              </span>
+            ) : (
+              <button
+                onClick={async () => {
+                  const res = await probeCompanion();
+                  setCompanionConnected(res.connected);
+                  if (!res.connected) {
+                    alert('Local Companion not detected on 127.0.0.1:9001.\n\nTo enable local host terminal execution, run:\npython companion/hkbu_genai_companion.py');
+                  }
+                }}
+                className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[11px] text-slate-500 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors cursor-pointer"
+                title="Connect local terminal companion daemon"
+              >
+                <span>+ Local Node</span>
+              </button>
+            )}
           </div>
 
           {/* Local Directory Selector or Agent Step Progress */}

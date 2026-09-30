@@ -1,4 +1,4 @@
-import { ChatMessage, streamChatCompletion, ToolCallItem } from '../api';
+import { ChatMessage, streamChatCompletion } from '../api';
 import { AgentStep, AgentTool, ToolCallExecution } from './types';
 import { DEFAULT_BROWSER_TOOLS, dispatchToolExecution, formatToOpenAITools } from './tools/registry';
 
