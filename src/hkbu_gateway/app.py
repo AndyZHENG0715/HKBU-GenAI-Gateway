@@ -437,20 +437,30 @@ async def chat_completions(
             )
         response = await provider.chat(model.id, payload, credential.hkbu_api_key)
         data = response.json()
-        if isinstance(data, dict) and "choices" in data:
-            for choice in data.get("choices", []):
-                msg = choice.get("message", {})
-                content = msg.get("content") or ""
-                if msg.get("tool_calls"):
-                    if choice.get("finish_reason") in ("STOP", "stop", None):
-                        choice["finish_reason"] = "tool_calls"
-                for open_tag, close_tag in REASONING_TAG_PAIRS:
-                    if open_tag in content and close_tag in content:
-                        pre, rest = content.split(open_tag, 1)
-                        think_body, post = rest.split(close_tag, 1)
-                        msg["reasoning_content"] = think_body.strip()
-                        msg["content"] = (pre + post.lstrip("\n")).strip()
-                        break
+        if isinstance(data, dict):
+            if "choices" not in data or not data["choices"]:
+                data["choices"] = [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                    },
+                    "finish_reason": "stop",
+                }]
+            else:
+                for choice in data.get("choices", []):
+                    msg = choice.get("message", {})
+                    content = msg.get("content") or ""
+                    if msg.get("tool_calls"):
+                        if choice.get("finish_reason") in ("STOP", "stop", None):
+                            choice["finish_reason"] = "tool_calls"
+                    for open_tag, close_tag in REASONING_TAG_PAIRS:
+                        if open_tag in content and close_tag in content:
+                            pre, rest = content.split(open_tag, 1)
+                            think_body, post = rest.split(close_tag, 1)
+                            msg["reasoning_content"] = think_body.strip()
+                            msg["content"] = (pre + post.lstrip("\n")).strip()
+                            break
         return JSONResponse(content=data)
     except (UpstreamError, httpx.HTTPError) as exc:
         status = exc.status_code if isinstance(exc, UpstreamError) else 502

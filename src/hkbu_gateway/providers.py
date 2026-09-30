@@ -188,6 +188,8 @@ class HKBUProvider:
 
         think_filter = ThinkStreamFilter()
         last_chunk_template: dict[str, Any] | None = None
+        has_emitted_role = False
+        has_emitted_finish = False
         has_emitted_choices = False
 
         try:
@@ -196,6 +198,7 @@ class HKBUProvider:
                 self._url(model, "chat/completions"),
                 headers=self._headers(api_key),
                 json=payload,
+                timeout=120.0,
             ) as response:
                 if response.is_error:
                     raw_bytes = await response.aread()
@@ -209,7 +212,8 @@ class HKBUProvider:
                         "choices": [{
                             "index": 0,
                             "delta": {
-                                "content": f"\n\n[Error from HKBU Platform ({response.status_code}): {error_detail}]\n\n"
+                                "role": "assistant",
+                                "content": f"\n\n[Error from HKBU Platform ({response.status_code}): {error_detail}]\n\n",
                             },
                             "finish_reason": "stop",
                         }],
@@ -218,11 +222,58 @@ class HKBUProvider:
                     yield b"data: [DONE]\n\n"
                     return
 
+                content_type = response.headers.get("content-type", "")
+                if "application/json" in content_type:
+                    # Upstream returned a single JSON response instead of SSE stream
+                    raw_bytes = await response.aread()
+                    text = raw_bytes.decode("utf-8", errors="replace")
+                    try:
+                        data = json.loads(text)
+                        if "error" in data:
+                            err_msg = data["error"].get("message") if isinstance(data["error"], dict) else str(data["error"])
+                            error_json = json.dumps({
+                                "error": data["error"],
+                                "choices": [{
+                                    "index": 0,
+                                    "delta": {
+                                        "role": "assistant",
+                                        "content": f"\n\n[Error from HKBU Platform: {err_msg}]\n\n",
+                                    },
+                                    "finish_reason": "stop",
+                                }],
+                            })
+                            yield f"data: {error_json}\n\n".encode()
+                            yield b"data: [DONE]\n\n"
+                            return
+                        if "choices" in data and isinstance(data["choices"], list) and len(data["choices"]) > 0:
+                            c_text = data["choices"][0].get("message", {}).get("content") or ""
+                            stream_id = data.get("id", f"chatcmpl-{uuid.uuid4().hex[:24]}")
+                            chunk1 = {
+                                "id": stream_id,
+                                "object": "chat.completion.chunk",
+                                "created": data.get("created", int(time.time())),
+                                "model": model,
+                                "choices": [{"index": 0, "delta": {"role": "assistant", "content": c_text}, "finish_reason": None}],
+                            }
+                            chunk2 = {
+                                "id": stream_id,
+                                "object": "chat.completion.chunk",
+                                "created": data.get("created", int(time.time())),
+                                "model": model,
+                                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                            }
+                            yield f"data: {json.dumps(chunk1)}\n\n".encode()
+                            yield f"data: {json.dumps(chunk2)}\n\n".encode()
+                            yield b"data: [DONE]\n\n"
+                            return
+                    except Exception:
+                        pass
+
                 async for line in response.aiter_lines():
-                    if not line or not line.startswith("data: "):
+                    if not line or not line.startswith("data:"):
                         continue
 
-                    raw_data = line[6:].strip()
+                    raw_data = line[5:].strip()
                     if raw_data == "[DONE]":
                         # Flush any remaining buffer before closing
                         for kind, piece in think_filter.flush():
@@ -255,8 +306,9 @@ class HKBUProvider:
                             for chunk_bytes in tool_stream_filter.flush_done():
                                 yield chunk_bytes
                                 has_emitted_choices = True
+                                has_emitted_finish = True
                         else:
-                            if not has_emitted_choices:
+                            if not has_emitted_finish:
                                 fallback_template = last_chunk_template or {
                                     "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
                                     "object": "chat.completion.chunk",
@@ -266,26 +318,69 @@ class HKBUProvider:
                                 c = dict(fallback_template)
                                 c["choices"] = [{
                                     "index": 0,
-                                    "delta": {},
+                                    "delta": {} if has_emitted_choices else {"role": "assistant", "content": ""},
                                     "finish_reason": "stop",
                                 }]
                                 yield f"data: {json.dumps(c)}\n\n".encode()
+                                has_emitted_choices = True
+                                has_emitted_finish = True
                             yield b"data: [DONE]\n\n"
                         return
 
                     try:
                         chunk_obj = json.loads(raw_data)
                         last_chunk_template = chunk_obj
+
+                        # Check for mid-stream error payload
+                        if "error" in chunk_obj:
+                            err_msg = chunk_obj["error"].get("message") if isinstance(chunk_obj["error"], dict) else str(chunk_obj["error"])
+                            c = {
+                                "id": chunk_obj.get("id", f"chatcmpl-{uuid.uuid4().hex[:24]}"),
+                                "object": "chat.completion.chunk",
+                                "created": chunk_obj.get("created", int(time.time())),
+                                "model": model,
+                                "error": chunk_obj["error"],
+                                "choices": [{
+                                    "index": 0,
+                                    "delta": {"content": f"\n\n[Error from HKBU Platform: {err_msg}]\n\n"},
+                                    "finish_reason": "stop",
+                                }],
+                            }
+                            yield f"data: {json.dumps(c)}\n\n".encode()
+                            has_emitted_choices = True
+                            has_emitted_finish = True
+                            yield b"data: [DONE]\n\n"
+                            return
+
                         choices = chunk_obj.get("choices")
                         if choices and isinstance(choices, list) and len(choices) > 0:
-                            delta = choices[0].get("delta", {})
+                            choice = choices[0]
+                            delta = choice.get("delta", {})
+                            finish_reason = choice.get("finish_reason")
                             content = delta.get("content")
+
+                            if finish_reason:
+                                has_emitted_finish = True
+                            if delta.get("role"):
+                                has_emitted_role = True
+
                             # If chunk has content and no explicit reasoning_content, filter through ThinkStreamFilter
                             if isinstance(content, str) and "reasoning_content" not in delta:
                                 events = think_filter.process(content)
                                 if not events:
-                                    # Text buffered waiting for tag boundary
+                                    # Text buffered or empty; if chunk carries finish_reason or role, forward it!
+                                    if finish_reason or delta.get("role"):
+                                        c = dict(chunk_obj)
+                                        synthetic_line = f"data: {json.dumps(c)}"
+                                        if emulate and tool_stream_filter:
+                                            for chunk_bytes in tool_stream_filter.process_chunk(synthetic_line):
+                                                yield chunk_bytes
+                                                has_emitted_choices = True
+                                        else:
+                                            yield f"{synthetic_line}\n\n".encode()
+                                            has_emitted_choices = True
                                     continue
+
                                 for kind, piece in events:
                                     c = dict(chunk_obj)
                                     new_delta = dict(delta)
@@ -293,15 +388,18 @@ class HKBUProvider:
                                         new_delta.pop("content", None)
                                         new_delta["reasoning_content"] = piece
                                         c["choices"] = [{
-                                            **choices[0],
+                                            **choice,
                                             "delta": new_delta,
                                         }]
                                         yield f"data: {json.dumps(c)}\n\n".encode()
                                         has_emitted_choices = True
                                     else:
+                                        if not has_emitted_role:
+                                            new_delta["role"] = "assistant"
+                                            has_emitted_role = True
                                         new_delta["content"] = piece
                                         c["choices"] = [{
-                                            **choices[0],
+                                            **choice,
                                             "delta": new_delta,
                                         }]
                                         synthetic_line = f"data: {json.dumps(c)}"
@@ -314,25 +412,75 @@ class HKBUProvider:
                                             has_emitted_choices = True
                                 continue
 
-                        if emulate and tool_stream_filter:
-                            for chunk_bytes in tool_stream_filter.process_chunk(line):
-                                yield chunk_bytes
+                            # Other non-text chunk with choices (role, finish_reason, tool_calls, native reasoning)
+                            if not has_emitted_role and not delta.get("role") and not finish_reason:
+                                delta["role"] = "assistant"
+                                has_emitted_role = True
+                            synthetic_line = f"data: {json.dumps(chunk_obj)}"
+                            if emulate and tool_stream_filter:
+                                for chunk_bytes in tool_stream_filter.process_chunk(synthetic_line):
+                                    yield chunk_bytes
+                                    has_emitted_choices = True
+                            else:
+                                yield f"{synthetic_line}\n\n".encode()
                                 has_emitted_choices = True
-                        else:
-                            yield f"{line}\n\n".encode()
-                            has_emitted_choices = True
-                    except Exception:
-                        if emulate and tool_stream_filter:
-                            for chunk_bytes in tool_stream_filter.process_chunk(line):
-                                yield chunk_bytes
-                                has_emitted_choices = True
-                        else:
-                            yield f"{line}\n\n".encode()
+                            continue
+
+                        # Chunk has empty choices or no choices (e.g. usage chunk)
+                        if chunk_obj.get("usage"):
+                            c = dict(chunk_obj)
+                            # Guarantee non-empty choices so Copilot / clients never fail
+                            c["choices"] = [{
+                                "index": 0,
+                                "delta": {},
+                                "finish_reason": None,
+                            }]
+                            yield f"data: {json.dumps(c)}\n\n".encode()
                             has_emitted_choices = True
 
-                if emulate and tool_stream_filter and tool_stream_filter.buffer:
+                    except Exception:
+                        pass
+
+                # If loop completed without seeing [DONE]
+                for kind, piece in think_filter.flush():
+                    if last_chunk_template and piece:
+                        c = dict(last_chunk_template)
+                        c["choices"] = [{
+                            "index": 0,
+                            "delta": {"content": piece},
+                            "finish_reason": None,
+                        }]
+                        if emulate and tool_stream_filter:
+                            for chunk_bytes in tool_stream_filter.process_chunk(f"data: {json.dumps(c)}"):
+                                yield chunk_bytes
+                                has_emitted_choices = True
+                        else:
+                            yield f"data: {json.dumps(c)}\n\n".encode()
+                            has_emitted_choices = True
+
+                if emulate and tool_stream_filter:
                     for chunk_bytes in tool_stream_filter.flush_done():
                         yield chunk_bytes
+                        has_emitted_choices = True
+                        has_emitted_finish = True
+                else:
+                    if not has_emitted_finish:
+                        fallback_template = last_chunk_template or {
+                            "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": model,
+                        }
+                        c = dict(fallback_template)
+                        c["choices"] = [{
+                            "index": 0,
+                            "delta": {} if has_emitted_choices else {"role": "assistant", "content": ""},
+                            "finish_reason": "stop",
+                        }]
+                        yield f"data: {json.dumps(c)}\n\n".encode()
+                        has_emitted_choices = True
+                        has_emitted_finish = True
+                    yield b"data: [DONE]\n\n"
 
         except Exception as exc:
             error_json = json.dumps({
@@ -343,7 +491,8 @@ class HKBUProvider:
                 "choices": [{
                     "index": 0,
                     "delta": {
-                        "content": f"\n\n[Gateway Network Error: {exc}]\n\n"
+                        "role": "assistant",
+                        "content": f"\n\n[Gateway Network Error: {exc}]\n\n",
                     },
                     "finish_reason": "stop",
                 }],

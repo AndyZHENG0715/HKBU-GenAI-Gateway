@@ -5,6 +5,16 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-09-30
+
+### Fixed
+
+- **Streaming Protocol Lifecycle & Finish Reason Guarantee (`providers.py`, `tools.py`)**:
+  - Fixed an issue where models emitting empty-string content (`content: ""`) alongside terminal metadata (such as Qwen and Gemini final chunks) had their finish chunks silently swallowed by `ThinkStreamFilter`, causing streams to close without `finish_reason: "stop"`.
+  - Guaranteed `role: "assistant"` on the first content-bearing SSE chunk and `finish_reason: "stop"` on the final chunk before `data: [DONE]`, eliminating VS Code Copilot's `Response contained no choices` error.
+  - Hardened `EmulatedToolStreamFilter` to properly process chunks without spaces after `data:` (per W3C SSE standard) and prevent empty `choices: []` chunks from reaching downstream consumers.
+  - Added non-streaming `choices` guarantees in `app.py` for `/v1/chat/completions` and standard fallback formatting.
+
 ## [1.3.1] - 2026-09-30
 
 ### Added

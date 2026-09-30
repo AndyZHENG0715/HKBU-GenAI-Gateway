@@ -349,16 +349,18 @@ class EmulatedToolStreamFilter:
         self.buffer = ""
         self.is_determined = False
         self.is_tool_call_candidate = False
+        self.has_emitted_role = False
+        self.has_emitted_finish = False
         self.has_emitted_choices = False
         self.last_chunk_template: dict[str, Any] | None = None
         self.stream_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
         self.created = int(time.time())
 
     def process_chunk(self, chunk_line: str) -> list[bytes]:
-        if not chunk_line.startswith("data: "):
+        if not chunk_line.startswith("data:"):
             return []
 
-        raw = chunk_line[6:].strip()
+        raw = chunk_line[5:].strip()
         if raw == "[DONE]":
             return self.flush_done()
 
@@ -369,17 +371,52 @@ class EmulatedToolStreamFilter:
             self.created = chunk_obj.get("created", self.created)
             choices = chunk_obj.get("choices", [])
             if not choices or not isinstance(choices, list):
-                clean_line = chunk_line if chunk_line.endswith("\n\n") else f"{chunk_line}\n\n"
-                return [clean_line.encode()]
+                return []
 
             delta = choices[0].get("delta", {})
+            finish_reason = choices[0].get("finish_reason")
             content = delta.get("content")
-            if not content or not isinstance(content, str):
-                if self.is_determined and not self.is_tool_call_candidate:
-                    clean_line = chunk_line if chunk_line.endswith("\n\n") else f"{chunk_line}\n\n"
+            results: list[bytes] = []
+
+            # 1. Emit role chunk once at the beginning of assistant stream
+            if delta.get("role") and not self.has_emitted_role:
+                self.has_emitted_role = True
+                c_role = dict(chunk_obj)
+                c_role["choices"] = [{
+                    **choices[0],
+                    "delta": {"role": delta["role"]},
+                    "finish_reason": None,
+                }]
+                self.has_emitted_choices = True
+                results.append(f"data: {json.dumps(c_role)}\n\n".encode())
+
+            # 2. Handle finish_reason if present on this chunk
+            if finish_reason:
+                if self.is_tool_call_candidate:
+                    flushed_chunks = self.flush_done(include_done=False)
+                    results.extend(flushed_chunks)
+                    return results
+                else:
+                    self.is_determined = True
+                    flushed = self.buffer
+                    self.buffer = ""
+                    c_finish = dict(chunk_obj)
+                    new_delta = dict(delta)
+                    if flushed:
+                        new_delta["content"] = flushed
+                    c_finish["choices"] = [{
+                        **choices[0],
+                        "delta": new_delta,
+                        "finish_reason": finish_reason,
+                    }]
                     self.has_emitted_choices = True
-                    return [clean_line.encode()]
-                return []
+                    self.has_emitted_finish = True
+                    results.append(f"data: {json.dumps(c_finish)}\n\n".encode())
+                    return results
+
+            # 3. Content handling
+            if not content or not isinstance(content, str):
+                return results
 
             self.buffer += content
 
@@ -387,19 +424,19 @@ class EmulatedToolStreamFilter:
             if not self.is_determined:
                 stripped = self.buffer.strip()
                 if not stripped:
-                    return []
+                    return results
                 if (
                     stripped.startswith("```")
                     or stripped.startswith("{")
                     or stripped.startswith("[")
                     or (
                         stripped.startswith("<")
-                        and not stripped.startswith(("<think>", "<thought>", "<thinking>", "<reasoning>"))
+                        and not any(tag.startswith(stripped) or stripped.startswith(tag) for tag in ("<think>", "<thought>", "<thinking>", "<reasoning>"))
                     )
                 ):
                     self.is_determined = True
                     self.is_tool_call_candidate = True
-                    return []
+                    return results
                 else:
                     self.is_determined = True
                     self.is_tool_call_candidate = False
@@ -409,9 +446,11 @@ class EmulatedToolStreamFilter:
                     c["choices"] = [{
                         **choices[0],
                         "delta": {"content": flushed},
+                        "finish_reason": None,
                     }]
                     self.has_emitted_choices = True
-                    return [f"data: {json.dumps(c)}\n\n".encode()]
+                    results.append(f"data: {json.dumps(c)}\n\n".encode())
+                    return results
 
             if not self.is_tool_call_candidate:
                 flushed = self.buffer
@@ -420,17 +459,18 @@ class EmulatedToolStreamFilter:
                 c["choices"] = [{
                     **choices[0],
                     "delta": {"content": flushed},
+                    "finish_reason": None,
                 }]
                 self.has_emitted_choices = True
-                return [f"data: {json.dumps(c)}\n\n".encode()]
+                results.append(f"data: {json.dumps(c)}\n\n".encode())
+                return results
 
-            return []
+            return results
 
         except Exception:
-            clean_line = chunk_line if chunk_line.endswith("\n\n") else f"{chunk_line}\n\n"
-            return [clean_line.encode()]
+            return []
 
-    def flush_done(self) -> list[bytes]:
+    def flush_done(self, include_done: bool = True) -> list[bytes]:
         results = []
         if self.is_tool_call_candidate and self.buffer:
             tool_calls = extract_tool_calls(self.buffer, self.original_tools)
@@ -492,10 +532,14 @@ class EmulatedToolStreamFilter:
                     }],
                 }
                 results.append(f"data: {json.dumps(chunk3)}\n\n".encode())
-                results.append(b"data: [DONE]\n\n")
+                self.buffer = ""
                 self.has_emitted_choices = True
+                self.has_emitted_finish = True
+                if include_done:
+                    results.append(b"data: [DONE]\n\n")
                 return results
 
+            # Not a tool call; flush candidate buffer as content
             chunk_fallback = {
                 "id": self.stream_id,
                 "object": "chat.completion.chunk",
@@ -504,13 +548,14 @@ class EmulatedToolStreamFilter:
                 "choices": [{
                     "index": 0,
                     "delta": {"content": self.buffer},
-                    "finish_reason": "stop",
+                    "finish_reason": None,
                 }],
             }
             results.append(f"data: {json.dumps(chunk_fallback)}\n\n".encode())
+            self.buffer = ""
             self.has_emitted_choices = True
 
-        if not self.has_emitted_choices:
+        if not self.has_emitted_finish:
             chunk_fallback = {
                 "id": self.stream_id,
                 "object": "chat.completion.chunk",
@@ -518,12 +563,15 @@ class EmulatedToolStreamFilter:
                 "model": self.model_id,
                 "choices": [{
                     "index": 0,
-                    "delta": {"content": self.buffer or ""},
+                    "delta": {"content": self.buffer} if self.buffer else {},
                     "finish_reason": "stop",
                 }],
             }
             results.append(f"data: {json.dumps(chunk_fallback)}\n\n".encode())
+            self.buffer = ""
             self.has_emitted_choices = True
+            self.has_emitted_finish = True
 
-        results.append(b"data: [DONE]\n\n")
+        if include_done:
+            results.append(b"data: [DONE]\n\n")
         return results

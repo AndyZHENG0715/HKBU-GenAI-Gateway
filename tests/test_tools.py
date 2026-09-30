@@ -181,6 +181,42 @@ def test_emulated_stream_filter_regular_text():
     assert len(content_chunks) >= 2
     assert content_chunks[0]["choices"][0]["delta"]["content"] == "The "
     assert content_chunks[1]["choices"][0]["delta"]["content"] == "weather is nice."
+    # Guarantee stop finish_reason
+    assert any(c["choices"][0].get("finish_reason") == "stop" for c in content_chunks)
+
+
+def test_emulated_stream_filter_role_and_empty_choices():
+    handler = EmulatedToolStreamFilter(SAMPLE_TOOLS, "qwen3-max")
+
+    chunks = [
+        # Chunk 0 has role and empty content
+        'data: {"id": "1", "choices": [{"delta": {"role": "assistant", "content": ""}, "finish_reason": null}]}\n',
+        # Chunk with empty choices (e.g. usage) should be dropped by handler
+        'data: {"id": "1", "choices": [], "usage": {"total_tokens": 10}}\n',
+        # Content chunk
+        'data: {"id": "1", "choices": [{"delta": {"content": "Hello!"}, "finish_reason": null}]}\n',
+        # Final chunk with stop and empty content
+        'data: {"id": "1", "choices": [{"delta": {"content": ""}, "finish_reason": "stop"}]}\n',
+        "data: [DONE]\n",
+    ]
+
+    out_bytes = []
+    for c in chunks:
+        out_bytes.extend(handler.process_chunk(c.strip()))
+
+    lines = [b.decode("utf-8").strip() for b in out_bytes if b.decode("utf-8").strip()]
+    parsed = [json.loads(l[5:].strip()) for l in lines if l != "data: [DONE]"]
+
+    # Verify role was emitted
+    assert parsed[0]["choices"][0]["delta"]["role"] == "assistant"
+    # Verify content was emitted
+    assert any("Hello!" in c["choices"][0]["delta"].get("content", "") for c in parsed)
+    # Verify stop was emitted
+    assert any(c["choices"][0].get("finish_reason") == "stop" for c in parsed)
+    # Verify NO chunk ever had empty choices
+    assert all(len(c.get("choices", [])) > 0 for c in parsed)
+    # Verify [DONE] is the last line
+    assert lines[-1] == "data: [DONE]"
 
 
 def test_extract_xml_tool_calls():
