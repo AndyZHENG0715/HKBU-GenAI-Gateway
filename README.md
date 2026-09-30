@@ -165,6 +165,13 @@ Run automated tests with pytest:
 pytest
 ```
 
+## 📚 Documentation & Engineering Guides
+
+- [Architecture & Internal Pipelines](docs/architecture.md): Request lifecycle, streaming invariants, tool calling emulation, and security architecture.
+- [Troubleshooting Guide](docs/troubleshooting.md): Detailed root causes and resolutions for client crashes, Qwen multi-turn history loss, NestJS validation errors, and proxy routing.
+- [Upstream Providers & Benchmarks](docs/providers.md): HKBU platform deployments, live-tested endpoints, and Swagger findings.
+- [AI Coding Agent Guidelines](AGENTS.md): Operational instructions, upstream constraints, and invariants for AI coding assistants.
+
 ---
 
 ## 📄 Versioning & Commits

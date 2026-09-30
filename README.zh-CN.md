@@ -165,6 +165,13 @@ npm run build
 pytest
 ```
 
+## 📚 专项工程文档与指南
+
+- [系统架构与内部流水线 (Architecture)](docs/architecture.md)：请求生命周期、流式协议不变量、工具调用模拟引擎及安全模型。
+- [故障排查指南 (Troubleshooting)](docs/troubleshooting.md)：客户端崩溃（无 choices）、千问多轮历史丢失、NestJS 数据校验 400 错误及代理配置方案。
+- [上游模型与基准分析 (Providers)](docs/providers.md)：浸会大学 GenAI 平台部署、实测接口及 Swagger 分析。
+- [AI 编码 Agent 规范指南 (AGENTS.md)](AGENTS.md)：面向 AI 助手（Claude Code、Cursor、Copilot、Cline）的操作规范与架构约束。
+
 ---
 
 ## 📄 版本与提交规范
