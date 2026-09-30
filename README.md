@@ -1,5 +1,7 @@
 # HKBU GenAI Gateway
 
+[English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-HK.md)
+
 An OpenAI-compatible self-service gateway and developer portal for the **HKBU GenAI Platform**. 
 
 Students and researchers can convert their university platform key into standard OpenAI credentials in 1 click, test models directly in a built-in web playground, and connect to desktop clients, coding agents, and custom workflows.
@@ -31,7 +33,7 @@ Students and researchers can convert their university platform key into standard
 
 ## 🚀 Quick Start
 
-### ⚡ 1. One-Click Quick Start (一键启动，零门槛)
+### ⚡ 1. One-Click Quick Start
 
 The repository provides cross-platform startup scripts that automatically set up the virtual environment, install dependencies, launch the server, and open your browser:
 
@@ -62,7 +64,7 @@ Once started, open `http://localhost:8000/` (or `http://localhost:8000/hkbuapi4a
 
 ---
 
-### 🛠️ 2. Developer Manual Setup (开发调试)
+### 🛠️ 2. Developer Manual Setup
 
 Requires Python 3.9+ and pip or uv:
 
