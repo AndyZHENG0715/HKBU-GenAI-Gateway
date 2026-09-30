@@ -35,10 +35,10 @@ Target Version: **`2.0.0`** (SemVer major bump: Agentic Playground evolution).
 - [x] **Commit 3**: `feat(agent): implement autonomous agent execution loop with cycle guard`
 
 ### Milestone 4: UI / UX Playground Integration
-- [ ] **Task 4.1**: Build `frontend/src/components/ToolCallCard.tsx` (collapsible arguments, status indicators, console output viewer, Matplotlib plot image preview, copy button).
-- [ ] **Task 4.2**: Update `frontend/src/components/Playground.tsx` with Agent Mode toggle, active tools panel, local directory selector badge, and step progress pill.
-- [ ] **Task 4.3**: Integrate live abort controller for the agent loop ("Stop Agent" button).
-- [ ] **Commit 4**: `feat(playground): add agent mode UI, tool cards, and progress visualization`
+- [x] **Task 4.1**: Build `frontend/src/components/ToolCallCard.tsx` (collapsible arguments, status indicators, console output viewer, Matplotlib plot image preview, copy button).
+- [x] **Task 4.2**: Update `frontend/src/components/Playground.tsx` with Agent Mode toggle, active tools panel, local directory selector badge, and step progress pill.
+- [x] **Task 4.3**: Integrate live abort controller for the agent loop ("Stop Agent" button).
+- [x] **Commit 4**: `feat(playground): add agent mode UI, tool cards, and progress visualization`
 
 ### Milestone 5: Tier 2 - Local Companion Bridge (Power Users)
 - [ ] **Task 5.1**: Implement standalone zero-dependency Python script `companion/hkbu_genai_companion.py` (WebSocket server on `127.0.0.1:9001`, handshake, bash execution, filesystem access).

@@ -16,20 +16,36 @@ import {
   History,
   Sparkles,
   Zap,
+  Folder,
+  Terminal,
+  Globe,
+  Calculator,
+  CheckCircle2,
+  FolderPlus,
 } from 'lucide-react';
 import { SUPPORTED_MODELS } from '../lib/models';
 import { streamChatCompletion, StreamChunk } from '../lib/api';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ThinkingBox } from './ThinkingBox';
+import { ToolCallCard } from './ToolCallCard';
+import { ToolCallExecution } from '../lib/agent/types';
+import { runAgentLoop } from '../lib/agent/loop';
+import { DEFAULT_BROWSER_TOOLS } from '../lib/agent/tools/registry';
+import {
+  getWorkspaceDirectoryName,
+  promptSelectDirectory,
+  isFileSystemAccessSupported,
+} from '../lib/agent/tools/browserFs';
 
 export interface PlaygroundMessage {
   id: string;
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
   reasoning?: string;
   isThinking?: boolean;
   error?: string;
   timestamp?: number;
+  toolCalls?: ToolCallExecution[];
 }
 
 export interface ChatSession {
@@ -39,6 +55,7 @@ export interface ChatSession {
   createdAt: number;
   updatedAt: number;
   messages: PlaygroundMessage[];
+  isAgentMode?: boolean;
 }
 
 const STORAGE_KEY_SESSIONS = 'hkbu_playground_sessions_v2';
@@ -50,12 +67,13 @@ const createDefaultSession = (): ChatSession => ({
   model: 'gpt-4.1',
   createdAt: Date.now(),
   updatedAt: Date.now(),
+  isAgentMode: true,
   messages: [
     {
       id: `msg-${Date.now()}-welcome`,
       role: 'assistant',
       content:
-        'Hello! I am connected to the HKBU GenAI Gateway. You can test any model here—with rich markdown, deep reasoning thought processes, and full conversation history. How can I help you today?',
+        'Hello! I am your HKBU GenAI Assistant. In Agent Mode, I can execute Python in your browser (via WebAssembly), analyze datasets, generate charts, and inspect local files—with zero server overhead. How can I assist you today?',
       timestamp: Date.now(),
     },
   ],
@@ -96,6 +114,8 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agentProgress, setAgentProgress] = useState<string | null>(null);
+  const [workspaceDir, setWorkspaceDir] = useState<string>(() => getWorkspaceDirectoryName());
 
   // Message action states
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
@@ -111,6 +131,26 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
   }, [sessions, activeSessionId]);
 
   const selectedModel = currentSession?.model || 'gpt-4.1';
+  const isAgentMode = currentSession?.isAgentMode ?? true;
+
+  const handleToggleAgentMode = () => {
+    updateCurrentSession((s) => ({
+      ...s,
+      isAgentMode: !(s.isAgentMode ?? true),
+      updatedAt: Date.now(),
+    }));
+  };
+
+  const handleSelectDirectory = async () => {
+    try {
+      const name = await promptSelectDirectory();
+      setWorkspaceDir(name);
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        setError(err.message || 'Could not select local directory');
+      }
+    }
+  };
 
   // Persist sessions to localStorage
   useEffect(() => {
@@ -221,6 +261,110 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
       role: m.role,
       content: m.content || '',
     }));
+
+    if (isAgentMode) {
+      setAgentProgress('Initializing agent...');
+      await runAgentLoop({
+        model: modelToUse,
+        messages: payloadMessages,
+        tools: DEFAULT_BROWSER_TOOLS,
+        gatewayKey: apiKey,
+        maxIterations: 10,
+        signal: controller.signal,
+        onStepStart: (stepIndex) => {
+          setAgentProgress(`Step ${stepIndex}/10: Reasoning and selecting tools...`);
+        },
+        onStepChunk: (_stepIndex, chunk) => {
+          let parsedReasoning = chunk.reasoning_content || '';
+          let parsedContent = chunk.content || '';
+          let currentlyThinking = Boolean(parsedReasoning && !parsedContent);
+
+          if (parsedContent.includes('<think>')) {
+            if (parsedContent.includes('</think>')) {
+              const parts = parsedContent.split('</think>');
+              const thinkPart = parts[0].replace('<think>', '').trim();
+              const afterPart = parts.slice(1).join('</think>').trimStart();
+              parsedReasoning = [parsedReasoning, thinkPart].filter(Boolean).join('\n\n');
+              parsedContent = afterPart;
+              currentlyThinking = false;
+            } else {
+              const thinkPart = parsedContent.replace('<think>', '').trimStart();
+              parsedReasoning = [parsedReasoning, thinkPart].filter(Boolean).join('\n\n');
+              parsedContent = '';
+              currentlyThinking = true;
+            }
+          }
+
+          updateCurrentSession((session) => ({
+            ...session,
+            updatedAt: Date.now(),
+            messages: session.messages.map((m) =>
+              m.id === assistantMsgId
+                ? {
+                    ...m,
+                    content: parsedContent,
+                    reasoning: parsedReasoning,
+                    toolCalls: chunk.toolCalls || m.toolCalls,
+                    isThinking: currentlyThinking,
+                  }
+                : m
+            ),
+          }));
+        },
+        onToolStart: (stepIndex, tc) => {
+          setAgentProgress(`Step ${stepIndex}/10: Running ${tc.toolName}...`);
+          updateCurrentSession((session) => ({
+            ...session,
+            messages: session.messages.map((m) =>
+              m.id === assistantMsgId
+                ? {
+                    ...m,
+                    toolCalls: (m.toolCalls || []).map((t) => (t.callId === tc.callId ? { ...tc } : t)),
+                  }
+                : m
+            ),
+          }));
+        },
+        onToolFinish: (stepIndex, tc) => {
+          setAgentProgress(`Step ${stepIndex}/10: Completed ${tc.toolName}`);
+          updateCurrentSession((session) => ({
+            ...session,
+            messages: session.messages.map((m) =>
+              m.id === assistantMsgId
+                ? {
+                    ...m,
+                    toolCalls: (m.toolCalls || []).map((t) => (t.callId === tc.callId ? { ...tc } : t)),
+                  }
+                : m
+            ),
+          }));
+        },
+        onError: (err) => {
+          const errorMsg = err.message || 'Agent encountered an error';
+          setError(errorMsg);
+          setIsStreaming(false);
+          setAgentProgress(null);
+          updateCurrentSession((session) => ({
+            ...session,
+            messages: session.messages.map((m) =>
+              m.id === assistantMsgId ? { ...m, isThinking: false, error: errorMsg } : m
+            ),
+          }));
+        },
+        onFinish: () => {
+          setIsStreaming(false);
+          setAgentProgress(null);
+          abortControllerRef.current = null;
+          updateCurrentSession((session) => ({
+            ...session,
+            messages: session.messages.map((m) =>
+              m.id === assistantMsgId ? { ...m, isThinking: false } : m
+            ),
+          }));
+        },
+      });
+      return;
+    }
 
     let rawReasoning = '';
     let rawContent = '';
@@ -351,12 +495,13 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
-      setIsStreaming(false);
-      updateCurrentSession((session) => ({
-        ...session,
-        messages: session.messages.map((m) => ({ ...m, isThinking: false })),
-      }));
     }
+    setIsStreaming(false);
+    setAgentProgress(null);
+    updateCurrentSession((session) => ({
+      ...session,
+      messages: session.messages.map((m) => ({ ...m, isThinking: false })),
+    }));
   };
 
   // Retry / Regenerate assistant message
@@ -505,6 +650,21 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
 
         {/* Model Selector & Actions */}
         <div className="flex items-center space-x-2 sm:space-x-3 w-full sm:w-auto">
+          {/* Mode Switcher Button */}
+          <button
+            onClick={handleToggleAgentMode}
+            disabled={isStreaming}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs ${
+              isAgentMode
+                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold'
+                : 'bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700'
+            }`}
+            title={isAgentMode ? 'Switch to Standard Chat' : 'Enable Autonomous Agent Mode'}
+          >
+            <Zap className={`w-3.5 h-3.5 ${isAgentMode ? 'fill-current' : ''}`} />
+            <span>{isAgentMode ? 'Agent Mode' : 'Chat Mode'}</span>
+          </button>
+
           {/* Model Dropdown */}
           <select
             value={selectedModel}
@@ -555,6 +715,67 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
           />
         </div>
       </div>
+
+      {/* Agent Capabilities & Workspace Toolbar */}
+      {isAgentMode && (
+        <div className="px-4 sm:px-6 py-2 bg-slate-100/70 dark:bg-slate-850/80 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+          {/* Active tools badges */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mr-1">
+              Tools:
+            </span>
+            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-medium">
+              <Terminal className="w-3 h-3 text-emerald-500" />
+              <span>Python (Wasm)</span>
+            </span>
+            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 text-[11px] font-medium">
+              <Globe className="w-3 h-3 text-sky-500" />
+              <span>Web Fetch</span>
+            </span>
+            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-[11px] font-medium">
+              <Calculator className="w-3 h-3 text-purple-500" />
+              <span>Calculator</span>
+            </span>
+            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-[11px] font-medium">
+              <Folder className="w-3 h-3 text-amber-500" />
+              <span>File System</span>
+            </span>
+          </div>
+
+          {/* Local Directory Selector or Agent Step Progress */}
+          <div className="flex items-center space-x-2">
+            {agentProgress && (
+              <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-medium text-[11px] animate-pulse">
+                <Sparkles className="w-3 h-3 text-blue-500 animate-spin" />
+                <span>{agentProgress}</span>
+              </div>
+            )}
+
+            {isFileSystemAccessSupported() && (
+              <button
+                onClick={handleSelectDirectory}
+                disabled={isStreaming}
+                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 font-medium text-[11px] transition-colors cursor-pointer shadow-xs"
+                title="Select a local workspace folder for the agent to inspect or edit"
+              >
+                {workspaceDir ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-300 truncate max-w-[130px]">
+                      {workspaceDir}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <FolderPlus className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Select Local Folder</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Error Alert Banner with prominent Retry Button */}
       {error && (
@@ -716,6 +937,15 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                               reasoning={msg.reasoning || ''}
                               isThinking={msg.isThinking}
                             />
+                          )}
+
+                          {/* Tool Calls Rendering */}
+                          {!isUser && msg.toolCalls && msg.toolCalls.length > 0 && (
+                            <div className="my-2 space-y-1.5 w-full">
+                              {msg.toolCalls.map((tc) => (
+                                <ToolCallCard key={tc.callId} toolCall={tc} />
+                              ))}
+                            </div>
                           )}
 
                           {/* Message Content with Rich Markdown Rendering */}
