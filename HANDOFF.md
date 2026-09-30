@@ -6,13 +6,31 @@ Last updated: **2026-09-30**. Read [the latest incident handoff](#6-latest-incid
 
 ## 1. Project State
 
-- **Current Version**: `1.3.3`
-- **Active Branch**: `main`
-- **Test Status**: 71 passing in the latest full run (`PYTHONPATH=src pytest`); two dependency deprecation warnings.
-- **Local Service**: Started in this session on `http://127.0.0.1:8000`, without hot reload. Both localhost health checks and Node `fetch` returned HTTP 200. This is a runtime snapshot, not a guarantee that a persistent daemon is installed.
-- **User Verification**: After restart, the user reported that the Copilot issue appeared resolved. A complete original Copilot request has not been captured/replayed.
+- **Current Version**: `2.0.0`
+- **Active Branch**: `feat/agentic-playground`
+- **Test Status**: 80 passing in the latest full run (`PYTHONPATH=src pytest`); 0 failures.
+- **Frontend Status**: Built cleanly with Vite (`npm run build` targeting `static/index.html` and `static/hkbuapi4agent.html`).
+- **Local Services**:
+  - Gateway runs on `http://127.0.0.1:8000` (FastAPI).
+  - Optional Local Companion Node runs on `http://127.0.0.1:9001` (`companion/hkbu_genai_companion.py`).
 
 ## 2. Completed Milestones
+
+### Agentic Playground & Compute Offloading (v2.0.0)
+- **Zero Cloud Overhead & Railway Anti-RCE**: Architecture offloads all code and tool execution to the client, ensuring 0 bytes RAM, 0 CPU load, and zero RCE vulnerability on Railway container deployments.
+- **Tier 1 (Browser-Native Sandboxed Toolsuite - Zero Install)**:
+  - Pyodide WebAssembly (CPython 3.12) with stdout/stderr capture and automatic inline Matplotlib figure extraction (`base64` PNG).
+  - Browser File System Access API (`showDirectoryPicker`) for local workspace file reading and writing.
+  - Web page content extractor (`web_fetch`) and safe mathematical evaluator (`calculator`).
+- **Tier 2 (Opt-In Local Companion Bridge - Power Users)**:
+  - `companion/hkbu_genai_companion.py`: Zero-external-dependency standard library Python daemon running strictly on loopback `127.0.0.1:9001` with CORS preflight and RFC 6455 WebSocket.
+  - Host execution bridge: `companion_bash_execute`, `companion_read_file`, `companion_write_file`.
+  - Comprehensive unit test suite in `tests/test_companion.py` (9 passing tests).
+- **Autonomous Agent Loop**:
+  - Pi-inspired state machine (`runAgentLoop` in `frontend/src/lib/agent/loop.ts`) supporting multi-step iterative tool execution.
+  - Streaming protocol integration with real-time tool call delta accumulation.
+  - Loop safety guards: 10-iteration cycle cap, `AbortController` cancellation, and output truncation.
+  - Interactive Playground UI: Agent Mode toggle, active tools capability badges, local directory connection pill, and collapsible `ToolCallCard` with plot rendering.
 
 ### Core Gateway Capabilities
 - OpenAI-compatible endpoints (`/v1/chat/completions`, `/v1/models`, `/v1/embeddings`).

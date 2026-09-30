@@ -5,6 +5,26 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-09-30
+
+### Added
+
+- **Agentic Playground Engine (`frontend/src/lib/agent/`, `frontend/src/components/Playground.tsx`)**:
+  - Evolved the interactive playground into an autonomous **Agentic Playground** referencing the minimalist harness architecture of Pi agent (`pi-agent-core`) and OpenClaw ("小龙虾").
+  - Implemented an event-driven agent loop (`loop.ts`) supporting autonomous multi-step reasoning, streaming tool call detection, local execution dispatch, observation feedback, and iteration cycle guard (max 10 iterations) with instant cancellation.
+- **Client-Side Compute Offloading (Tier 1: Zero-Install Browser Sandboxes)**:
+  - **In-Browser Python via WebAssembly (Pyodide)**: Runs full CPython 3.12 with NumPy, Pandas, and Matplotlib directly in the user's browser CPU/memory. Intercepts `plt.show()` and exports figures as inline Canvas/PNG charts into the conversation with **zero server load on Railway**.
+  - **Local Workspace Access (Browser File System Access API)**: Enables users to select a local folder on their computer via native browser prompt; the agent can inspect file trees, read code, and edit files directly on the local disk without installing any software.
+  - **Web Fetch & Calculator Tools**: Safe client-side HTML/JSON extraction and mathematical expression evaluation.
+- **Tier 2 Local Companion Bridge (`companion/hkbu_genai_companion.py`, `localCompanion.ts`)**:
+  - Zero-dependency standalone Python companion daemon running on `127.0.0.1:9001` with strict loopback binding and permissive CORS.
+  - Unlocks native host shell execution (`bash`), local git operations, and full workspace filesystem manipulation for power users.
+  - Added companion unit test suite (`tests/test_companion.py`, 9 tests passing).
+- **Playground UI & UX Enhancements (`ToolCallCard.tsx`)**:
+  - Added Mode Switcher toggle: **💬 Chat Mode** vs **⚡ Agent Mode**.
+  - Built interactive `ToolCallCard` with collapsible arguments, live execution spinner, duration timer, console logs, and Matplotlib plot rendering.
+  - Added active tools capabilities bar with local directory selector and real-time step progress indicator.
+
 ## [1.3.3] - 2026-09-30
 
 ### Fixed

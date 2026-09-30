@@ -21,6 +21,12 @@
 - **🔍 通用模型发现与规格元数据**：
   - 提供 `/v1/models`、`/models`、`/v1/model`、`/model`、兼容 OpenRouter 的 `/api/v1/models` 以及兼容 LiteLLM 的 `/v1/model/info`。
   - 遵循 [models.dev](https://models.dev) 与腾讯工蜂（WorkBuddy）规格的模型能力完整元数据（`supportsToolCall`、`supportsReasoning`、`supportsVision`、`contextWindow`、`maxTokens`、`tool_call`、`reasoning`、`attachment`、`limit`、`capabilities`）。
+- **🤖 自主 Agentic Playground（客户端混合计算）**：
+  - 内置参考 Pi agent 与 OpenClaw（“小龙虾”）极简架构的自主智能体循环（Agent Loop），支持多步思考、流式工具调用与本地派发。
+  - **Railway 零服务端算力负担**：所有代码执行、数据科学与文件读写均在用户浏览器或本地物理机完成：
+    - **浏览器 WebAssembly Python (Pyodide)**：在用户浏览器中完整运行 CPython 3.12、NumPy、Pandas，生成的 Matplotlib 图表直接渲染嵌入聊天气泡！
+    - **本地项目文件夹挂载 (File System Access API)**：浏览器原生授权选择本地文件夹，Agent 可直接检视、阅读、编辑本地工程代码，0 安装。
+    - **Tier 2 本地极客伴侣节点 (`companion/hkbu_genai_companion.py`)**：单文件零依赖伴侣脚本，解锁全功能本地终端执行（Bash / Git）。
 - **💬 交互式 Web Playground**：
   - 在浏览器中通过实时 SSE 流式测试大学支持的任何模型。
   - **🧠 DeepSeek 与多标签思维链手风琴**：支持折叠展开思考过程，兼容 `delta.reasoning_content` 及 `<think>`、`<thought>`、`<thinking>`、`<reasoning>` 等标签。

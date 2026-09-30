@@ -21,6 +21,12 @@ Students and researchers can convert their university platform key into standard
 - **🔍 Universal Model Discovery & Capabilities**:
   - Exposes `/v1/models`, `/models`, `/v1/model`, `/model`, OpenRouter-compatible `/api/v1/models`, and LiteLLM-compatible `/v1/model/info`.
   - Comprehensive model capabilities metadata following [models.dev](https://models.dev) and Tencent WorkBuddy schemas (`supportsToolCall`, `supportsReasoning`, `supportsVision`, `contextWindow`, `maxTokens`, `tool_call`, `reasoning`, `attachment`, `limit`, `capabilities`).
+- **🤖 Autonomous Agentic Playground (Hybrid Compute)**:
+  - Built-in autonomous agent loop (inspired by Pi agent & OpenClaw) with multi-step reasoning, streaming tool calls, and local execution dispatch.
+  - **Zero Server Overhead on Railway**: All code execution, data science, and file manipulation run on the user's browser or local machine:
+    - **In-Browser Python via WebAssembly (Pyodide)**: Runs full CPython 3.12 with NumPy, Pandas, and Matplotlib. Plots render directly inside chat bubbles!
+    - **Local Workspace Inspection (Browser File System Access API)**: Select any local folder to let the agent inspect and edit files directly from the browser.
+    - **Tier 2 Local Companion Node (`companion/hkbu_genai_companion.py`)**: Optional zero-dependency local daemon enabling full host terminal (`bash`) and git execution.
 - **💬 Interactive Web Playground**:
   - Test any university model directly in the browser with real-time SSE streaming.
   - **🧠 DeepSeek & Multi-Tag Reasoning Accordion**: Collapsible thought process container supporting both `delta.reasoning_content` deltas and `<think>`, `<thought>`, `<thinking>`, `<reasoning>` tags.

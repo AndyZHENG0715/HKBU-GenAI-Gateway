@@ -324,3 +324,83 @@ The gateway is packaged for immediate deployment across desktop, container, and 
   - `docker-compose.yml` mounts `./data` to `/app/data` to ensure persistent credentials and encryption keys survive container rebuilds.
 - **PaaS & Serverless**:
   - Root `Procfile` ready for zero-configuration deployments on Railway and Render (`web: PYTHONPATH=src uvicorn hkbu_gateway.app:app --host 0.0.0.0 --port ${PORT:-8000}`).
+
+---
+
+## 10. Agentic Playground & Client Compute Offloading
+
+Starting in v2.0.0, the gateway includes an autonomous **Agentic Playground** inspired by minimalist harnesses (Pi agent / `pi-agent-core`, OpenClaw, DeepSeek Harness).
+
+### 10.1 Cloud Safety & Railway Resource Isolation
+
+Deploying the gateway to cloud PaaS platforms like Railway introduces two hard constraints:
+1. **Resource Limits**: Free and standard tiers provide 512MB–1GB RAM and ephemeral disk storage.
+2. **Security & Anti-RCE**: Executing arbitrary Python code, shell commands, or filesystem operations inside a multi-tenant cloud container presents severe remote code execution (RCE) and quota-exhaustion risks.
+
+To achieve absolute server safety and zero operational overhead on Railway, compute is offloaded entirely to the user's client using a **Two-Tier Hybrid Architecture**:
+
+```
+                       +---------------------------------------------------+
+                       |              Railway Cloud Container              |
+                       |       (hkbu-genai-gateway FastAPI Backend)        |
+                       | - Stateless OpenAI API Proxy                      |
+                       | - Encrypted Credential Vault                      |
+                       | - Model Capabilities Discovery                    |
+                       | - Tool Calling Emulation (Qwen / DeepSeek)        |
+                       +---------------------------------------------------+
+                                                ^
+                                                | OpenAI REST / SSE Stream
+                                                v
++---------------------------------------------------------------------------------------------------------+
+|                                        User's Local Machine                                             |
+|                                                                                                         |
+|  +-------------------------------------------------------------+                                        |
+|  |                Web Browser (Playground UI)                  |                                        |
+|  |                                                             |                                        |
+|  |  +-----------------------+     +--------------------------+ |                                        |
+|  |  |  Agent Loop Engine    | <-> |   Tool Registry          | |                                        |
+|  |  |  (runAgentLoop)       |     |   (OpenAI Schema Format) | |                                        |
+|  |  +-----------------------+     +--------------------------+ |                                        |
+|  |              |                              |               |                                        |
+|  |              v                              v               |                                        |
+|  |  +--------------------------------------------------------+ |                                        |
+|  |  |           Tier 1: Browser-Native Sandboxed Tools       | |                                        |
+|  |  | - Pyodide (Python 3.12 WebAssembly + NumPy/Pandas)    | |                                        |
+|  |  | - Matplotlib Figure Interceptor (inline Base64 PNG)   | |                                        |
+|  |  | - Browser File System Access API (showDirectoryPicker) | |                                        |
+|  |  | - Web Page Content Extractor & Safe Calculator        | |                                        |
+|  |  +--------------------------------------------------------+ |                                        |
+|  +-------------------------------------------------------------+                                        |
+|                                 |                                                                       |
+|                                 | Local Loopback (HTTP/WebSocket)                                       |
+|                                 v (http://127.0.0.1:9001)                                               |
+|  +-------------------------------------------------------------+                                        |
+|  |        Tier 2: Opt-In Local Companion Node (Power Users)    |                                        |
+|  |        (companion/hkbu_genai_companion.py)                  |                                        |
+|  | - Zero-external-dependency standard library Python daemon   |                                        |
+|  | - Strict 127.0.0.1 binding with CORS preflight support      |                                        |
+|  | - Host Bash execution & local terminal bridge               |                                        |
+|  +-------------------------------------------------------------+                                        |
++---------------------------------------------------------------------------------------------------------+
+```
+
+### 10.2 Tier 1: In-Browser Sandboxed Toolsuite (Zero-Install)
+Available instantly with zero configuration or local installations:
+- **Pyodide CPython 3.12 Wasm Engine**: Runs Python scripts directly inside the browser thread. Automatically captures `sys.stdout` and `sys.stderr`. Detects Matplotlib plot creation and extracts chart figures as inline Base64 PNG images rendered inside collapsible `ToolCallCard` components.
+- **Browser File System Access API**: Allows users to select a local folder via the native browser directory picker (`showDirectoryPicker()`). The agent can list directories, read source files, and write output files directly to the selected directory after obtaining browser permission.
+- **Web Content Extractor & Calculator**: Fetches web documentation and evaluates mathematical expressions within safe browser sandboxes.
+
+### 10.3 Tier 2: Opt-In Local Companion Node (Power Users)
+For tasks requiring host shell commands, Git workflows, or full filesystem access:
+- **Zero External Dependencies**: Implemented using Python's standard library (`http.server.ThreadingHTTPServer`, `subprocess`, `urllib`). Requires no `pip install`.
+- **Strict Loopback Isolation**: Binds exclusively to `127.0.0.1:9001` (never `0.0.0.0`), preventing any LAN or external network access.
+- **Auto-Discovery**: The Playground UI automatically pings `http://127.0.0.1:9001/healthz`. When detected, host terminal tools (`companion_bash_execute`, `companion_read_file`, `companion_write_file`) are dynamically registered in the agent's active tool catalog.
+
+### 10.4 Autonomous Agent Loop Engine
+Inspired by the core architecture of Pi-agent (`pi-agent-core`):
+1. **Loop State Machine**: Implements iterative reasoning and execution cycles (`runAgentLoop`).
+2. **Streaming Protocol Integration**: Streams LLM generation deltas in real-time, accumulating tool call arguments incrementally.
+3. **Safety Guards**:
+   - **Iteration Cap**: Enforces a strict default limit of 10 loop iterations per prompt to prevent runaway token expenditure.
+   - **Cancellation Token**: Live `AbortController` connection allows users to interrupt the agent cycle at any moment.
+   - **Output Truncation**: Tool outputs exceeding safe lengths are truncated with informational indicators to protect token budgets.
