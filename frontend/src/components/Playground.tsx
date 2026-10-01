@@ -131,7 +131,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
   const [editInput, setEditInput] = useState('');
 
   const abortControllerRef = useRef<AbortController | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Active Session helper
   const currentSession = useMemo(() => {
@@ -187,9 +187,11 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
     }
   }, [currentApiKey]);
 
-  // Auto scroll
+  // Auto scroll - strictly scroll ONLY the inner messages container, never dragging the window
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
   }, [currentSession?.messages, isStreaming]);
 
   const updateCurrentSession = (updater: (session: ChatSession) => ChatSession) => {
@@ -903,7 +905,10 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
         {/* Chat Area */}
         <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-slate-900">
           {/* Messages Scroll Area */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+          <div
+            ref={messagesContainerRef}
+            className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 overscroll-contain"
+          >
             {currentSession.messages.map((msg, index) => {
               const isUser = msg.role === 'user';
               const isEditing = editingMsgId === msg.id;
@@ -1116,7 +1121,6 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                 </div>
               );
             })}
-            <div ref={messagesEndRef} />
           </div>
 
           {/* Quick Prompts if conversation is fresh */}

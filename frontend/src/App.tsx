@@ -45,6 +45,11 @@ export const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Ensure switching tabs always presents the clean top view without cutting off header
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [activeTab]);
+
   const handleKeyGenerated = (cred: CredentialResponse) => {
     setGeneratedKey(cred.api_key);
     // Smoothly scroll down to result card
