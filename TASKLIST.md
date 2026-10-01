@@ -52,3 +52,11 @@ Target Version: **`2.0.0`** (SemVer major bump: Agentic Playground evolution).
 - [x] **Task 6.3**: Update `HANDOFF.md`, `README.md`, `README.zh-CN.md`, `README.zh-HK.md`, and `docs/architecture.md`.
 - [x] **Task 6.4**: Execute 5-file SemVer bump to `2.0.0` with `CHANGELOG.md` release notes.
 - [x] **Commit 6**: `chore(release): bump version to 2.0.0 and document agentic playground`
+
+### Milestone 7: Codex & Z-Code Harness Polish (UX, Context Anchoring, Binary Files)
+- [x] **Task 7.1**: Redesign `ToolCallCard.tsx` with Codex/Z-Code collapsible aesthetics (compact 1-line pill, collapsed by default upon completion, tabbed inspector for parameters, output, and plot preview).
+- [x] **Task 7.2**: Fix tool result user turn masking amnesia in `src/hkbu_gateway/app.py` (`_prepare_qwen_messages`) by explicitly anchoring `Active user goal`.
+- [x] **Task 7.3**: Inject Codex Autonomous Delivery Principle into `src/hkbu_gateway/tools.py` and `loop.ts` (ban "what is your desired file path" questions; autonomously save deliverables).
+- [x] **Task 7.4**: Support Base64 binary decoding in `browserFs.ts` (`write_local_file`) and `hkbu_genai_companion.py` (`write_file`) for direct PDF and image saving.
+- [x] **Task 7.5**: Rebuild frontend bundle and expand pytest suite with binary writing tests (81 passing).
+- [x] **Commit 7**: `feat(agent): enhance tool UX with collapsible cards, context anchoring, and binary file writing`
