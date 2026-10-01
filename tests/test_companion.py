@@ -311,3 +311,25 @@ def test_write_binary_file_base64(server_info: Tuple[str, int, Path]) -> None:
     written_file = base_dir / "output.pdf"
     assert written_file.exists()
     assert written_file.read_bytes().startswith(b"%PDF-1.4")
+
+
+def test_companion_web_fetch_validation(server_info: Tuple[str, int, Path]) -> None:
+    base_url, _, _ = server_info
+    # Test invalid url
+    status, data, _ = make_request(
+        f"{base_url}/api/web_fetch",
+        method="POST",
+        data={"url": ""},
+    )
+    assert status == 400
+    assert "error" in data
+
+    # Test metadata restriction
+    status, data, _ = make_request(
+        f"{base_url}/api/web_fetch",
+        method="POST",
+        data={"url": "http://169.254.169.254/latest/meta-data"},
+    )
+    assert status == 400
+    assert "restricted" in data.get("error", "").lower()
+

@@ -135,3 +135,25 @@ def test_upstream_payload_sanitizes_empty_and_whitespace_content():
     assert payload["messages"][4]["content"] == "(success)"  # tool empty list -> (success)
     assert payload["messages"][5]["content"] == " "  # assistant without tool_calls whitespace -> " "
 
+
+def test_clean_html_text():
+    from hkbu_gateway.app import _clean_html_text
+
+    sample_html = """
+    <html>
+      <head><title>Test Page</title><style>.hidden { display: none; }</style></head>
+      <body>
+        <script>console.log("secret");</script>
+        <h1>Main Heading</h1>
+        <p>This is a paragraph with <a href="#">a link</a>.</p>
+        <div>Content block</div>
+      </body>
+    </html>
+    """
+    cleaned = _clean_html_text(sample_html)
+    assert "console.log" not in cleaned
+    assert ".hidden" not in cleaned
+    assert "Main Heading" in cleaned
+    assert "This is a paragraph with a link." in cleaned
+    assert "Content block" in cleaned
+

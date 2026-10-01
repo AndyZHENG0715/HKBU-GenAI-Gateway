@@ -15,6 +15,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -42,6 +43,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="HKBU GenAI Gateway", version=__version__, lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def _token(authorization: str | None) -> str:
@@ -576,6 +585,117 @@ async def download_companion():
         filename="hkbu_genai_companion.py",
         media_type="text/x-python",
     )
+
+
+class WebFetchRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=4096)
+
+
+def _clean_html_text(html_content: str) -> str:
+    """Strip script, style, navigation and format clean readable text from HTML."""
+    import html as html_lib
+    import re
+
+    # Remove script, style, iframe, svg, noscript tags and their contents
+    text = re.sub(
+        r"<(script|style|iframe|svg|noscript)[^>]*>.*?</\1>",
+        " ",
+        html_content,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    # Replace block tags with newlines
+    text = re.sub(
+        r"<(p|div|h[1-6]|li|tr|blockquote|section|article|header|footer|nav)[^>]*>",
+        "\n",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    # Strip remaining HTML tags without introducing artificial spaces
+    text = re.sub(r"<[^>]+>", "", text)
+    # Decode basic HTML entities
+    text = html_lib.unescape(text)
+    # Normalize whitespaces and clean up lines
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines()]
+    clean_lines = [l for l in lines if l]
+    return "\n".join(clean_lines)
+
+
+@app.post("/api/tools/web_fetch")
+async def web_fetch(
+    request: WebFetchRequest,
+    http_request: Request,
+):
+    target_url = request.url.strip()
+    if not (target_url.startswith("http://") or target_url.startswith("https://")):
+        target_url = f"https://{target_url}"
+
+    # Guard against cloud metadata SSRF
+    lower_url = target_url.lower()
+    if "169.254.169.254" in lower_url or "metadata.google" in lower_url:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Access to cloud metadata endpoints is restricted."},
+        )
+
+    client: httpx.AsyncClient = getattr(http_request.app.state, "client", None)
+    should_close = False
+    if client is None:
+        client = httpx.AsyncClient(timeout=15.0)
+        should_close = True
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36 HKBU-GenAI-Gateway"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/json,text/plain;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
+    }
+
+    try:
+        resp = await client.get(target_url, headers=headers, follow_redirects=True, timeout=15.0)
+        content_type = resp.headers.get("content-type", "").lower()
+        raw_text = resp.text
+
+        if resp.is_error:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "error": f"HTTP {resp.status_code} {resp.reason_phrase}",
+                    "status": resp.status_code,
+                    "url": str(resp.url),
+                },
+            )
+
+        if "application/json" in content_type:
+            cleaned = raw_text[:20000]
+        elif "text/html" in content_type or "<html" in raw_text[:500].lower():
+            cleaned = _clean_html_text(raw_text)[:20000]
+        else:
+            cleaned = raw_text[:20000]
+
+        return JSONResponse(
+            content={
+                "content": cleaned,
+                "status": resp.status_code,
+                "url": str(resp.url),
+            }
+        )
+    except httpx.TimeoutException:
+        return JSONResponse(
+            status_code=200,
+            content={"error": "Request timed out after 15 seconds.", "url": target_url},
+        )
+    except Exception as exc:
+        return JSONResponse(
+            status_code=200,
+            content={"error": f"Failed to fetch {target_url}: {str(exc)}", "url": target_url},
+        )
+    finally:
+        if should_close:
+            await client.aclose()
 
 
 static_dir = Path(__file__).resolve().parents[2] / "static"

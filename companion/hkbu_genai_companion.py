@@ -188,6 +188,62 @@ class CompanionService:
         except Exception as exc:
             return 500, {"error": f"Failed to list directory: {exc}"}
 
+    def web_fetch(self, url: str | None) -> tuple[int, dict[str, Any]]:
+        """Fetch a public URL using standard library urllib and extract readable text."""
+        if not url or not isinstance(url, str):
+            return 400, {"error": "Missing or invalid 'url' string"}
+
+        target_url = url.strip()
+        if not (target_url.startswith("http://") or target_url.startswith("https://")):
+            target_url = f"https://{target_url}"
+
+        lower = target_url.lower()
+        if "169.254.169.254" in lower or "metadata.google" in lower:
+            return 400, {"error": "Access to cloud metadata endpoints is restricted"}
+
+        import html as html_lib
+        import re
+        import urllib.error
+        import urllib.request
+
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36 HKBU-Companion/2.0"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/json,text/plain;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
+        }
+
+        try:
+            req = urllib.request.Request(target_url, headers=headers)
+            with urllib.request.urlopen(req, timeout=15.0) as resp:
+                status = resp.status
+                content_type = resp.headers.get("Content-Type", "").lower()
+                charset = resp.headers.get_content_charset() or "utf-8"
+                raw_bytes = resp.read()
+                raw_text = raw_bytes.decode(charset, errors="replace")
+
+                if "application/json" in content_type:
+                    cleaned = raw_text[:20000]
+                elif "html" in content_type or "<html" in raw_text[:500].lower():
+                    t = re.sub(r"<(script|style|iframe|svg|noscript)[^>]*>.*?</\1>", " ", raw_text, flags=re.DOTALL | re.IGNORECASE)
+                    t = re.sub(r"<(p|div|h[1-6]|li|tr|blockquote|section|article|header|footer|nav)[^>]*>", "\n", t, flags=re.IGNORECASE)
+                    t = re.sub(r"<br\s*/?>", "\n", t, flags=re.IGNORECASE)
+                    t = re.sub(r"<[^>]+>", "", t)
+                    t = html_lib.unescape(t)
+                    lines = [re.sub(r"[ \t]+", " ", l).strip() for l in t.splitlines()]
+                    cleaned = "\n".join([l for l in lines if l])[:20000]
+                else:
+                    cleaned = raw_text[:20000]
+
+                return 200, {"content": cleaned, "status": status, "url": target_url}
+        except urllib.error.HTTPError as exc:
+            return 200, {"error": f"HTTP {exc.code}: {exc.reason}", "status": exc.code, "url": target_url}
+        except Exception as exc:
+            return 200, {"error": f"Failed to fetch {target_url}: {exc}", "url": target_url}
+
 
 class CompanionServer(ThreadingHTTPServer):
     """Threading HTTP & WebSocket server bound strictly to loopback 127.0.0.1."""
@@ -304,6 +360,11 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         elif path in ("/api/list_dir", "/list_dir", "/api/list", "/list"):
             req_path = payload.get("path", "")
             status, res = self.server.service.list_dir(req_path)
+            self.send_json(status, res)
+
+        elif path in ("/api/web_fetch", "/web_fetch"):
+            target_url = payload.get("url")
+            status, res = self.server.service.web_fetch(target_url)
             self.send_json(status, res)
 
         else:
