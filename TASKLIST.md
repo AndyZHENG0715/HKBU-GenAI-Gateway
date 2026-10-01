@@ -60,3 +60,13 @@ Target Version: **`2.0.0`** (SemVer major bump: Agentic Playground evolution).
 - [x] **Task 7.4**: Support Base64 binary decoding in `browserFs.ts` (`write_local_file`) and `hkbu_genai_companion.py` (`write_file`) for direct PDF and image saving.
 - [x] **Task 7.5**: Rebuild frontend bundle and expand pytest suite with binary writing tests (81 passing).
 - [x] **Commit 7**: `feat(agent): enhance tool UX with collapsible cards, context anchoring, and binary file writing`
+
+### Milestone 8: Cherry Studio / OpenWebUI Shell, Hero View & One-Click Companion
+- [x] **Task 8.1**: Retain Gateway Landing Identity: Keep `setup` (Key generation, Cursor/API presets) as the default first-view landing page, preserving standard gateway branding, navbar, and documentation layout.
+- [x] **Task 8.2**: Full-Bleed Fluid App Shell: When switching to `playground`, eliminate outer webpage scrollbars, remove fixed pixel heights (`h-[780px]`), hide the outer footer, and use pure Flexbox (`h-screen overflow-hidden`, `flex-1 min-h-0`) to adapt smoothly to any screen size.
+- [x] **Task 8.3**: Segmented Pill Mode Switcher: Implement ChatGPT/Cherry Studio style `[ 💬 Chat | ⚡ Agent ]` segmented pill control with clean active highlight.
+- [x] **Task 8.4**: OpenWebUI-Style Centered Hero View: When a session has 0 user messages, display an inspiring centered greeting ("今天有什么想做的？"), centered capsule input box, and 4 quick suggestion cards (`分析本地数据`, `Python 科学计算`, `文献与信息检索`, `论文研究构想`). Transition smoothly to timeline on first user message.
+- [x] **Task 8.5**: Zero-Friction Local Companion Support: Add zero-dependency double-clickable launchers `launch_companion.bat` (Windows) and `launch_companion.command` (macOS), plus a `/api/companion/download` endpoint on Railway and an in-app Helper Modal clarifying that 90% of students need 0 installation (Wasm Python + Browser File Access).
+- [x] **Task 8.6**: Verification & Build: All 82 pytest tests passing, Vite assets compiled cleanly.
+- [x] **Commit 8**: `feat(playground): responsive chat-agent workspace, hero view, and one-click companion`
+
