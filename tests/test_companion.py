@@ -292,3 +292,22 @@ def test_websocket_protocol(server_info: Tuple[str, int, Path]) -> None:
     close_frame = bytearray([0x88, 0x80]) + mask
     sock.sendall(close_frame)
     sock.close()
+
+
+def test_write_binary_file_base64(server_info: Tuple[str, int, Path]) -> None:
+    base_url, _, base_dir = server_info
+    # Simulated base64 PDF bytes: %PDF-1.4 ...
+    fake_pdf_b64 = "JVBERi0xLjQKJcTl8uXrCjEgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKPj4KZW5kb2Jq"
+    status, data, _ = make_request(
+        f"{base_url}/api/write_file",
+        method="POST",
+        data={"path": "output.pdf", "content": fake_pdf_b64},
+    )
+
+    assert status == 200
+    assert data["success"] is True
+    assert data.get("binary") is True
+
+    written_file = base_dir / "output.pdf"
+    assert written_file.exists()
+    assert written_file.read_bytes().startswith(b"%PDF-1.4")

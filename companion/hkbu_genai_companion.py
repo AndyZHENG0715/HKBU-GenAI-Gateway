@@ -128,7 +128,7 @@ class CompanionService:
             return 500, {"error": f"Failed to read file: {exc}"}
 
     def write_file(self, path: str | None, content: str | None) -> Tuple[int, dict[str, Any]]:
-        """Write UTF-8 text to a file, creating parent directories if needed."""
+        """Write UTF-8 text or decoded binary content to a file, creating parent directories if needed."""
         if not path:
             return 400, {"error": "Missing 'path' parameter"}
         if content is None:
@@ -137,6 +137,27 @@ class CompanionService:
         target = self.resolve_path(path)
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
+            clean = content.strip()
+            is_bin_ext = target.suffix.lower() in {
+                ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+                ".zip", ".tar", ".gz", ".wasm", ".bin", ".ico"
+            }
+            is_base64 = False
+            raw_b64 = clean
+            if clean.startswith("data:") and ";base64," in clean:
+                raw_b64 = clean.split(";base64,")[1]
+                is_base64 = True
+            elif clean.startswith("JVBERi0") or (is_bin_ext and len(clean) > 20 and " " not in clean[:80]):
+                is_base64 = True
+
+            if is_base64:
+                try:
+                    binary_bytes = base64.b64decode(raw_b64, validate=False)
+                    target.write_bytes(binary_bytes)
+                    return 200, {"success": True, "bytes_written": len(binary_bytes), "binary": True}
+                except Exception:
+                    pass
+
             target.write_text(content, encoding="utf-8")
             return 200, {"success": True}
         except Exception as exc:

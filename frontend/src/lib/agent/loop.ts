@@ -41,6 +41,17 @@ export async function runAgentLoop({
   onFinish,
 }: RunAgentLoopOptions): Promise<ChatMessage[]> {
   const conversationMessages: ChatMessage[] = [...messages];
+  const hasSystemPrompt = conversationMessages.some((m) => m.role === 'system');
+  if (!hasSystemPrompt) {
+    conversationMessages.unshift({
+      role: 'system',
+      content:
+        'You are an autonomous HKBU GenAI Assistant operating in Agent Mode. ' +
+        'You have access to tools to execute Python code, inspect/write local files in the user workspace, and run calculations. ' +
+        'Autonomous Delivery Principle: When generating files, reports, charts, or deliverables and tools like write_local_file or companion_write_file are available, take initiative: select a clean, sensible default filename (e.g. "resume.pdf", "analysis_report.md", "chart.png"), call write_local_file immediately, and report the saved path to the user. Do NOT ask the user technical questions like "what is your desired file path?". ' +
+        'If a tool returned binary base64 data (like PDF bytes), pass it directly to write_local_file which will decode and save it as a binary file.',
+    });
+  }
   let currentIteration = 1;
   const openAITools = formatToOpenAITools(tools);
 

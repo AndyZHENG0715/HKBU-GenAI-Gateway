@@ -190,6 +190,37 @@ export const writeFileTool: AgentTool = {
 
       const fileHandle = await resolved.parent.getFileHandle(resolved.name, { create: true });
       const writable = await fileHandle.createWritable();
+
+      const clean = content.trim();
+      const isBinaryExt = /\.(pdf|png|jpe?g|gif|webp|zip|tar|gz|wasm|bin|ico)$/i.test(relPath);
+      let isBase64 = false;
+      let rawB64 = clean;
+
+      if (clean.startsWith('data:') && clean.includes(';base64,')) {
+        rawB64 = clean.split(';base64,')[1];
+        isBase64 = true;
+      } else if (clean.startsWith('JVBERi0') || (isBinaryExt && clean.length > 20 && !clean.slice(0, 80).includes(' '))) {
+        isBase64 = true;
+      }
+
+      if (isBase64) {
+        try {
+          const binaryStr = atob(rawB64.replace(/\s+/g, ''));
+          const len = binaryStr.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+          await writable.write(bytes);
+          await writable.close();
+          return {
+            output: `Successfully saved binary file "${relPath}" (${len} bytes written).`,
+          };
+        } catch {
+          // Fall back to text write if atob fails
+        }
+      }
+
       await writable.write(content);
       await writable.close();
 
