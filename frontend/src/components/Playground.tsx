@@ -272,18 +272,36 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
     abortControllerRef.current = controller;
 
     // Filter valid conversation history to send upstream
-    // Include messages before the assistant placeholder that have non-empty content
+    // Include messages before the assistant placeholder that have non-empty content or executed tools
     const historyCandidates = allMessages
       .filter((m) => m.id !== assistantMsgId)
-      .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim());
+      .filter((m) => {
+        if (m.role === 'user') {
+          return Boolean(m.content && m.content.trim());
+        }
+        if (m.role === 'assistant') {
+          return Boolean(
+            (m.content && m.content.trim()) ||
+            (m.toolCalls && m.toolCalls.length > 0)
+          );
+        }
+        return false;
+      });
 
     const firstUserIdx = historyCandidates.findIndex((m) => m.role === 'user');
     const validHistory = firstUserIdx >= 0 ? historyCandidates.slice(firstUserIdx) : historyCandidates;
 
-    const payloadMessages = validHistory.map((m) => ({
-      role: m.role,
-      content: m.content || '',
-    }));
+    const payloadMessages = validHistory.map((m) => {
+      let text = (m.content || '').trim();
+      if (!text && m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+        const names = m.toolCalls.map((t) => t.toolName).join(', ');
+        text = `(Executed tools: ${names})`;
+      }
+      return {
+        role: m.role,
+        content: text || ' ',
+      };
+    });
 
     if (isAgentMode) {
       setAgentProgress('Initializing agent...');

@@ -395,9 +395,10 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
         msg["content"] = primitive_str
 
 
-def _prepare_qwen_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Work around HKBU Qwen forwarding only the last user turn (live verified).
+def _prepare_history_transcript(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Work around HKBU upstream adapters forwarding only the last user turn (live verified).
 
+    Applies to Qwen, DeepSeek, and Llama whose HKBU upstream adapters drop multi-turn history.
     Keep system instructions as separate messages. HKBU rejects developer roles,
     so map them to system. Encode earlier dialogue as data in the last user turn
     so the upstream adapter cannot silently discard it, including tool results.
@@ -456,6 +457,9 @@ def _prepare_qwen_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any
     return [*systems, current]
 
 
+_prepare_qwen_messages = _prepare_history_transcript
+
+
 def upstream_payload(request: BaseModel, model_id: str | None = None) -> dict[str, Any]:
     payload = request.model_dump(exclude_none=True)
     payload.pop("model", None)
@@ -467,10 +471,15 @@ def upstream_payload(request: BaseModel, model_id: str | None = None) -> dict[st
 
     if model_id:
         model = find_model(model_id)
-        if model and model.id in ("qwen-plus", "qwen3-max") and "messages" in payload:
-            payload["messages"] = _prepare_qwen_messages(payload["messages"])
-        # Reasoning models (o1, o3, gpt-5, gpt-5-mini) on Azure reject custom temperature, top_p, and penalties
         mid = model_id.lower()
+        is_history_dropping_model = (
+            (model and model.provider in ("qwen", "deepseek", "llama"))
+            or (model and not model.native_tool_call)
+            or any(k in mid for k in ("qwen", "deepseek", "llama"))
+        )
+        if is_history_dropping_model and "messages" in payload:
+            payload["messages"] = _prepare_history_transcript(payload["messages"])
+        # Reasoning models (o1, o3, gpt-5, gpt-5-mini) on Azure reject custom temperature, top_p, and penalties
         if mid.startswith(("o1", "o3", "gpt-5")):
             payload.pop("temperature", None)
             payload.pop("top_p", None)

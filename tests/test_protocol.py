@@ -4,8 +4,8 @@ import json
 import pytest
 
 
-@pytest.mark.parametrize("model", ["qwen-plus", "qwen3-max", "Qwen-3-max"])
-def test_qwen_history_is_visible_to_last_user_only_upstream(model):
+@pytest.mark.parametrize("model", ["qwen-plus", "qwen3-max", "Qwen-3-max", "deepSeek-V4-Pro-hkbu", "deepseek-v4-flash", "llama-4-maverick"])
+def test_history_is_visible_to_last_user_only_upstream(model):
     from hkbu_gateway.app import upstream_payload
 
     request = ChatCompletionRequest(model=model, messages=[
@@ -26,7 +26,8 @@ def test_qwen_history_is_visible_to_last_user_only_upstream(model):
     assert request.messages[3].role == "developer"
 
 
-def test_qwen_tool_results_survive_last_user_only_upstream():
+@pytest.mark.parametrize("model", ["qwen-plus", "deepSeek-V4-Pro-hkbu", "llama-4-maverick"])
+def test_tool_results_survive_last_user_only_upstream(model):
     from hkbu_gateway.app import upstream_payload
 
     messages = [
@@ -37,7 +38,7 @@ def test_qwen_tool_results_survive_last_user_only_upstream():
         }]},
         {"role": "tool", "tool_call_id": "call_read", "content": "ORCHID"},
     ]
-    prepared = upstream_payload(ChatCompletionRequest(model="qwen-plus", messages=messages), "qwen-plus")
+    prepared = upstream_payload(ChatCompletionRequest(model=model, messages=messages), model)
     assert len(prepared["messages"]) == 1
     content = prepared["messages"][0]["content"]
     transcript = json.loads(content.split("\n", 1)[1].split("\n\nCurrent user request", 1)[0])
@@ -45,19 +46,20 @@ def test_qwen_tool_results_survive_last_user_only_upstream():
     assert content.endswith("Continue the latest user request using the tool results above.")
 
 
-@pytest.mark.parametrize("model", ["gpt-4.1", "gemini-2.5-flash", "llama-4-maverick", "deepseek-v4-flash"])
-def test_qwen_history_workaround_does_not_change_other_models(model):
+@pytest.mark.parametrize("model", ["gpt-4.1", "gpt-5", "gemini-2.5-flash", "gemini-2.5-pro"])
+def test_history_workaround_does_not_change_native_models(model):
     from hkbu_gateway.app import upstream_payload
 
     messages = [{"role": "user", "content": "Remember ORCHID."}, {"role": "assistant", "content": "OK"}, {"role": "user", "content": "Recall it."}]
     assert upstream_payload(ChatCompletionRequest(model=model, messages=messages), model)["messages"] == messages
 
 
-def test_qwen_single_turn_does_not_add_transcript_tokens():
+@pytest.mark.parametrize("model", ["qwen-plus", "deepSeek-V4-Pro-hkbu", "llama-4-maverick"])
+def test_single_turn_does_not_add_transcript_tokens(model):
     from hkbu_gateway.app import upstream_payload
 
     messages = [{"role": "system", "content": "Follow instructions."}, {"role": "user", "content": "Hi"}]
-    assert upstream_payload(ChatCompletionRequest(model="qwen-plus", messages=messages), "qwen-plus")["messages"] == messages
+    assert upstream_payload(ChatCompletionRequest(model=model, messages=messages), model)["messages"] == messages
 
 
 def test_registry_contains_documented_models():
