@@ -30,6 +30,7 @@ import { streamChatCompletion, StreamChunk } from '../lib/api';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ThinkingBox } from './ThinkingBox';
 import { ToolCallCard } from './ToolCallCard';
+import { ModelDropdown } from './ModelDropdown';
 import { ToolCallExecution } from '../lib/agent/types';
 import { runAgentLoop } from '../lib/agent/loop';
 import { getAllAvailableTools } from '../lib/agent/tools/registry';
@@ -286,6 +287,23 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
 
     if (isAgentMode) {
       setAgentProgress('Initializing agent...');
+      const accumulatedToolCalls: ToolCallExecution[] = [];
+      let accumulatedReasoning = '';
+      let latestAnswer = '';
+
+      const upsertToolCall = (tc: ToolCallExecution, stepIndex?: number) => {
+        const enriched: ToolCallExecution = {
+          ...tc,
+          stepIndex: tc.stepIndex ?? stepIndex,
+        };
+        const idx = accumulatedToolCalls.findIndex((t) => t.callId === enriched.callId);
+        if (idx >= 0) {
+          accumulatedToolCalls[idx] = { ...accumulatedToolCalls[idx], ...enriched };
+        } else {
+          accumulatedToolCalls.push(enriched);
+        }
+      };
+
       await runAgentLoop({
         model: modelToUse,
         messages: payloadMessages,
@@ -296,26 +314,39 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
         onStepStart: (stepIndex) => {
           setAgentProgress(`Step ${stepIndex}/10: Reasoning and selecting tools...`);
         },
-        onStepChunk: (_stepIndex, chunk) => {
-          let parsedReasoning = chunk.reasoning_content || '';
-          let parsedContent = chunk.content || '';
-          let currentlyThinking = Boolean(parsedReasoning && !parsedContent);
+        onStepChunk: (stepIndex, chunk) => {
+          let stepReasoning = chunk.reasoning_content || '';
+          let stepContent = chunk.content || '';
 
-          if (parsedContent.includes('<think>')) {
-            if (parsedContent.includes('</think>')) {
-              const parts = parsedContent.split('</think>');
+          if (stepContent.includes('<think>')) {
+            if (stepContent.includes('</think>')) {
+              const parts = stepContent.split('</think>');
               const thinkPart = parts[0].replace('<think>', '').trim();
               const afterPart = parts.slice(1).join('</think>').trimStart();
-              parsedReasoning = [parsedReasoning, thinkPart].filter(Boolean).join('\n\n');
-              parsedContent = afterPart;
-              currentlyThinking = false;
+              stepReasoning = [stepReasoning, thinkPart].filter(Boolean).join('\n\n');
+              stepContent = afterPart;
             } else {
-              const thinkPart = parsedContent.replace('<think>', '').trimStart();
-              parsedReasoning = [parsedReasoning, thinkPart].filter(Boolean).join('\n\n');
-              parsedContent = '';
-              currentlyThinking = true;
+              const thinkPart = stepContent.replace('<think>', '').trimStart();
+              stepReasoning = [stepReasoning, thinkPart].filter(Boolean).join('\n\n');
+              stepContent = '';
             }
           }
+
+          if (chunk.toolCalls && chunk.toolCalls.length > 0) {
+            for (const tc of chunk.toolCalls) {
+              upsertToolCall(tc, stepIndex);
+            }
+          }
+
+          if (stepContent) {
+            latestAnswer = stepContent;
+          }
+
+          const currentTotalReasoning = stepReasoning
+            ? (accumulatedReasoning ? `${accumulatedReasoning}\n\n---\n**Step ${stepIndex} Thought:**\n${stepReasoning}` : stepReasoning)
+            : accumulatedReasoning;
+
+          const currentlyThinking = Boolean(stepReasoning && !stepContent);
 
           updateCurrentSession((session) => ({
             ...session,
@@ -324,9 +355,9 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
               m.id === assistantMsgId
                 ? {
                     ...m,
-                    content: parsedContent,
-                    reasoning: parsedReasoning,
-                    toolCalls: chunk.toolCalls || m.toolCalls,
+                    content: latestAnswer || stepContent,
+                    reasoning: currentTotalReasoning,
+                    toolCalls: [...accumulatedToolCalls],
                     isThinking: currentlyThinking,
                   }
                 : m
@@ -334,6 +365,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
           }));
         },
         onToolStart: (stepIndex, tc) => {
+          upsertToolCall(tc, stepIndex);
           setAgentProgress(`Step ${stepIndex}/10: Running ${tc.toolName}...`);
           updateCurrentSession((session) => ({
             ...session,
@@ -341,13 +373,14 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
               m.id === assistantMsgId
                 ? {
                     ...m,
-                    toolCalls: (m.toolCalls || []).map((t) => (t.callId === tc.callId ? { ...tc } : t)),
+                    toolCalls: [...accumulatedToolCalls],
                   }
                 : m
             ),
           }));
         },
         onToolFinish: (stepIndex, tc) => {
+          upsertToolCall(tc, stepIndex);
           setAgentProgress(`Step ${stepIndex}/10: Completed ${tc.toolName}`);
           updateCurrentSession((session) => ({
             ...session,
@@ -355,11 +388,27 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
               m.id === assistantMsgId
                 ? {
                     ...m,
-                    toolCalls: (m.toolCalls || []).map((t) => (t.callId === tc.callId ? { ...tc } : t)),
+                    toolCalls: [...accumulatedToolCalls],
                   }
                 : m
             ),
           }));
+        },
+        onStepFinish: (stepIndex, step) => {
+          if (step.reasoning) {
+            const prefix = stepIndex > 1 ? `\n\n---\n**Step ${stepIndex} Thought:**\n` : '';
+            accumulatedReasoning = accumulatedReasoning
+              ? `${accumulatedReasoning}${prefix}${step.reasoning}`
+              : step.reasoning;
+          }
+          if (step.content) {
+            latestAnswer = step.content;
+          }
+          if (step.toolCalls && step.toolCalls.length > 0) {
+            for (const tc of step.toolCalls) {
+              upsertToolCall(tc, stepIndex);
+            }
+          }
         },
         onError: (err) => {
           const errorMsg = err.message || 'Agent encountered an error';
@@ -369,7 +418,15 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
           updateCurrentSession((session) => ({
             ...session,
             messages: session.messages.map((m) =>
-              m.id === assistantMsgId ? { ...m, isThinking: false, error: errorMsg } : m
+              m.id === assistantMsgId
+                ? {
+                    ...m,
+                    isThinking: false,
+                    error: errorMsg,
+                    toolCalls: [...accumulatedToolCalls],
+                    reasoning: accumulatedReasoning,
+                  }
+                : m
             ),
           }));
         },
@@ -380,7 +437,15 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
           updateCurrentSession((session) => ({
             ...session,
             messages: session.messages.map((m) =>
-              m.id === assistantMsgId ? { ...m, isThinking: false } : m
+              m.id === assistantMsgId
+                ? {
+                    ...m,
+                    content: latestAnswer || m.content,
+                    reasoning: accumulatedReasoning || m.reasoning,
+                    toolCalls: [...accumulatedToolCalls],
+                    isThinking: false,
+                  }
+                : m
             ),
           }));
         },
@@ -774,18 +839,12 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
 
         {/* Right: Model Selector + New Chat + Local Node Trigger */}
         <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0 z-10">
-          <select
-            value={selectedModel}
-            onChange={(e) => handleModelChange(e.target.value)}
+          <ModelDropdown
+            models={chatModels}
+            selectedModelId={selectedModel}
+            onSelect={handleModelChange}
             disabled={isStreaming}
-            className="text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 sm:px-2.5 py-1 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-hkbu-blue-500 shadow-2xs cursor-pointer max-w-[125px] sm:max-w-[180px] truncate"
-          >
-            {chatModels.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
+          />
 
           <button
             onClick={handleNewChat}

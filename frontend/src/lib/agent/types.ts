@@ -39,6 +39,7 @@ export interface ToolCallExecution {
   result?: ToolExecutionResult;
   startedAt?: number;
   finishedAt?: number;
+  stepIndex?: number;
 }
 
 export interface AgentStep {

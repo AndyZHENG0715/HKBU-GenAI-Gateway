@@ -93,6 +93,7 @@ export async function runAgentLoop({
                   args: parsedArgs,
                   rawArgs: tc.function.arguments,
                   status: 'pending',
+                  stepIndex: currentIteration,
                 };
               });
             }

@@ -126,6 +126,11 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall }) => {
           </div>
 
           <div className="flex items-center space-x-1.5 min-w-0">
+            {toolCall.stepIndex !== undefined && (
+              <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shrink-0">
+                Step {toolCall.stepIndex}
+              </span>
+            )}
             {getToolIcon(toolCall.toolName)}
             <span className="font-semibold text-slate-800 dark:text-slate-200 text-[11px] truncate">
               {getDisplayName(toolCall.toolName)}
