@@ -630,39 +630,76 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
     }
   };
 
-  const quickPrompts = [
+  const chatHeroCards = [
+    {
+      icon: '🧠',
+      title: 'Explain Complex Concept',
+      desc: 'Break down transformer attention mechanisms with intuitive analogies',
+      prompt: 'Explain how the self-attention mechanism works in Transformer models using an intuitive real-world analogy.',
+    },
+    {
+      icon: '💡',
+      title: 'Brainstorm Research Ideas',
+      desc: 'Propose novel research angles on AI alignment and educational technology',
+      prompt: 'Brainstorm 3 novel and actionable research hypotheses regarding AI assistance in higher education curricula.',
+    },
+    {
+      icon: '✍️',
+      title: 'Academic Writing Polish',
+      desc: 'Critique and refine an abstract paragraph for formal tone and conciseness',
+      prompt: 'Please critique and polish this research abstract draft to ensure formal academic tone and clarity: ',
+    },
+    {
+      icon: '⚖️',
+      title: 'Methodology Comparison',
+      desc: 'Compare qualitative vs quantitative research approaches for user sentiment',
+      prompt: 'Compare the advantages and trade-offs of qualitative user interviews versus quantitative surveys for studying AI adoption.',
+    },
+  ];
+
+  const agentHeroCards = [
+    {
+      icon: '📊',
+      title: 'Analyze Local Dataset',
+      desc: 'Inspect workspace CSV/Excel files, compute statistics, and render charts',
+      prompt: 'Inspect the CSV data files in my workspace directory, calculate descriptive statistics, and plot visual trend charts using Python.',
+    },
+    {
+      icon: '🐍',
+      title: 'Run Python Simulation',
+      desc: 'Execute Python 3.12 in browser WebAssembly to solve computational problems',
+      prompt: 'Write and run a Python script to simulate the Monty Hall problem with 10,000 trials, and plot the empirical winning probabilities.',
+    },
+    {
+      icon: '🌐',
+      title: 'Web Literature Research',
+      desc: 'Retrieve web documentation, compare benchmarks, and synthesize findings',
+      prompt: 'Search and summarize recent architectural benchmarks and advancements in autonomous LLM agent execution loops.',
+    },
+    {
+      icon: '📁',
+      title: 'Audit Project Files',
+      desc: 'Scan workspace markdown files and extract high-level architecture',
+      prompt: 'Read and inspect the files in my selected workspace folder, and generate a concise technical summary of the project architecture.',
+    },
+  ];
+
+  const chatQuickPrompts = [
     'Explain how Large Language Models work in simple words.',
     'Brainstorm 3 creative research topics about AI ethics.',
     'Write a polite email asking a professor for a project meeting.',
     'Compare the pros and cons of qualitative vs quantitative research.',
   ];
 
-  const heroCards = [
-    {
-      icon: '📊',
-      title: '分析本地数据',
-      desc: '读取本地 CSV/Excel，进行统计分析并生成可视化图表',
-      prompt: '请帮我分析工作区中的数据文件，统计关键指标，并用 Python 绘制可视化趋势图。',
-    },
-    {
-      icon: '🐍',
-      title: 'Python 科学计算',
-      desc: '在浏览器沙盒中运行 Python 3.12 代码解决算法或计算问题',
-      prompt: '请编写一个 Python 脚本来计算斐波那契数列前 20 项，并评估其执行效率。',
-    },
-    {
-      icon: '🌐',
-      title: '文献与信息检索',
-      desc: '抓取学术网页或技术文档，提炼要点与技术对比',
-      prompt: '请检索关于大语言模型自主 Agent 架构的最新技术进展，并总结其核心模块与挑战。',
-    },
-    {
-      icon: '💡',
-      title: '论文研究构想',
-      desc: '结合最新学术热点，构思研究思路与论文框架',
-      prompt: '请帮我构思一个关于人工智能在高等教育中的应用与伦理风险的研究大纲。',
-    },
+  const agentQuickPrompts = [
+    'Inspect my workspace directory and list all files.',
+    'Run a Python script to calculate descriptive statistics of my dataset.',
+    'Search and summarize the latest advancements in LLM agent tool use.',
+    'Plot a Gaussian distribution curve using Matplotlib.',
   ];
+
+  const heroCards = isAgentMode ? agentHeroCards : chatHeroCards;
+  const quickPrompts = isAgentMode ? agentQuickPrompts : chatQuickPrompts;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -676,9 +713,9 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xl overflow-hidden flex-1 min-h-0 h-full flex flex-col transition-all">
       {/* Playground Top Bar */}
-      <div className="px-3 sm:px-4 py-2.5 bg-slate-50/90 dark:bg-slate-850/90 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-2 shrink-0">
+      <div className="relative px-3 sm:px-4 py-2.5 bg-slate-50/90 dark:bg-slate-900/90 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-2 shrink-0">
         {/* Left: Sidebar Toggle & Session Name */}
-        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
+        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 z-10">
           <button
             onClick={() => setShowSidebar(!showSidebar)}
             className={`p-1.5 rounded-lg border transition-all cursor-pointer shrink-0 ${
@@ -698,43 +735,45 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
           </div>
         </div>
 
-        {/* Center: ChatGPT / Cherry Studio Segmented Control [ Chat | Agent ] */}
-        <div className="inline-flex p-0.5 rounded-xl bg-slate-200/80 dark:bg-slate-800 border border-slate-300/60 dark:border-slate-700/80 shadow-inner">
-          <button
-            type="button"
-            onClick={() => {
-              if (isAgentMode) handleToggleAgentMode();
-            }}
-            disabled={isStreaming}
-            className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              !isAgentMode
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
-            }`}
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span>Chat</span>
-          </button>
+        {/* Center: Mathematically Centered Segmented Control [ Chat | Agent ] */}
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-auto">
+          <div className="inline-flex p-0.5 rounded-xl bg-slate-200/90 dark:bg-slate-800 border border-slate-300/70 dark:border-slate-700/80 shadow-inner">
+            <button
+              type="button"
+              onClick={() => {
+                if (isAgentMode) handleToggleAgentMode();
+              }}
+              disabled={isStreaming}
+              className={`flex items-center space-x-1.5 px-3.5 py-1 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                !isAgentMode
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Chat</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              if (!isAgentMode) handleToggleAgentMode();
-            }}
-            disabled={isStreaming}
-            className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              isAgentMode
-                ? 'bg-hkbu-blue-700 dark:bg-hkbu-blue-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
-            }`}
-          >
-            <Zap className={`w-3.5 h-3.5 ${isAgentMode ? 'fill-current' : ''}`} />
-            <span>Agent</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!isAgentMode) handleToggleAgentMode();
+              }}
+              disabled={isStreaming}
+              className={`flex items-center space-x-1.5 px-3.5 py-1 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                isAgentMode
+                  ? 'bg-hkbu-blue-700 dark:bg-hkbu-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+              }`}
+            >
+              <Zap className={`w-3.5 h-3.5 ${isAgentMode ? 'fill-current' : ''}`} />
+              <span>Agent</span>
+            </button>
+          </div>
         </div>
 
-        {/* Right: Model Selector + New Chat + Helper Trigger */}
-        <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
+        {/* Right: Model Selector + New Chat + Local Node Trigger */}
+        <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0 z-10">
           <select
             value={selectedModel}
             onChange={(e) => handleModelChange(e.target.value)}
@@ -766,10 +805,10 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                   ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60'
                   : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
               }`}
-              title="本地执行助手说明与连接状态"
+              title="Local Node companion status and download"
             >
               <span className={`w-2 h-2 rounded-full ${companionConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
-              <span className="hidden md:inline">{companionConnected ? '已连本地节点' : '本地助手'}</span>
+              <span className="hidden md:inline">{companionConnected ? 'Node Online' : 'Local Node'}</span>
             </button>
           )}
         </div>
@@ -799,9 +838,15 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
         </div>
       </div>
 
-      {/* Agent Capabilities & Workspace Toolbar */}
-      {isAgentMode && (
-        <div className="px-3 sm:px-4 py-1.5 bg-slate-100/70 dark:bg-slate-850/80 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+      {/* Agent Capabilities & Workspace Toolbar with smooth slide/fade transition */}
+      <div
+        className={`border-b transition-all duration-300 ease-in-out overflow-hidden shrink-0 ${
+          isAgentMode
+            ? 'max-h-24 opacity-100 py-1.5 px-3 sm:px-4 bg-slate-100/80 dark:bg-slate-900/90 border-slate-200/80 dark:border-slate-800'
+            : 'max-h-0 opacity-0 py-0 px-3 sm:px-4 border-transparent pointer-events-none'
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           {/* Active tools badges */}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mr-1">
@@ -826,7 +871,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
             {companionConnected ? (
               <span
                 className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-medium shadow-xs"
-                title="已连接本地助手 (127.0.0.1:9001)，已启用宿主机终端执行"
+                title="Connected to local companion node (127.0.0.1:9001). Host terminal execution active."
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span>Host Terminal (9001)</span>
@@ -835,9 +880,9 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
               <button
                 onClick={handleOpenHelperModal}
                 className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[11px] text-slate-500 dark:text-slate-400 hover:text-hkbu-blue-600 dark:hover:text-hkbu-blue-400 transition-colors cursor-pointer"
-                title="查看免安装本地助手说明"
+                title="View local companion guide and launcher"
               >
-                <span>+ 本地终端 (可选)</span>
+                <span>+ Local Node (Optional)</span>
               </button>
             )}
           </div>
@@ -856,7 +901,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                 onClick={handleSelectDirectory}
                 disabled={isStreaming}
                 className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 font-medium text-[11px] transition-colors cursor-pointer shadow-2xs"
-                title="选择本地工作区文件夹，授权 Agent 进行文件读写与数据分析"
+                title="Select a local workspace directory for file reading and writing"
               >
                 {workspaceDir ? (
                   <>
@@ -875,7 +920,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
             )}
           </div>
         </div>
-      )}
+      </div>
 
       {/* Error Alert Banner with prominent Retry Button */}
       {error && (
@@ -976,20 +1021,20 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
             <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-4 sm:p-8 overflow-y-auto">
               <div className="max-w-2xl w-full text-center space-y-6 animate-fadeIn">
                 <div className="space-y-2">
-                  <div className="w-12 h-12 mx-auto rounded-2xl bg-hkbu-blue-100 dark:bg-hkbu-blue-900/60 text-hkbu-blue-700 dark:text-hkbu-blue-300 flex items-center justify-center font-bold text-lg shadow-sm">
+                  <div className="w-12 h-12 mx-auto rounded-2xl bg-hkbu-blue-100 dark:bg-hkbu-blue-900/60 text-hkbu-blue-700 dark:text-hkbu-blue-300 flex items-center justify-center font-bold text-lg shadow-sm transition-all duration-300">
                     {isAgentMode ? (
-                      <Zap className="w-6 h-6 text-hkbu-gold-500 fill-current" />
+                      <Zap className="w-6 h-6 text-hkbu-gold-500 fill-current animate-fadeIn" />
                     ) : (
-                      <Bot className="w-6 h-6 text-hkbu-blue-600 dark:text-hkbu-blue-400" />
+                      <Bot className="w-6 h-6 text-hkbu-blue-600 dark:text-hkbu-blue-400 animate-fadeIn" />
                     )}
                   </div>
                   <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-                    今天有什么想做的？
+                    What would you like to explore today?
                   </h2>
-                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto transition-opacity duration-300">
                     {isAgentMode
-                      ? '已启用 Agent 模式 · 浏览器端 Python 运行、文件处理与网页检索'
-                      : '已启用 Chat 模式 · 享受纯粹的高速多轮大模型对话体验'}
+                      ? 'Agent Mode active · In-browser Python, local file processing, and web search'
+                      : 'Chat Mode active · Pure conversational intelligence and multi-turn reasoning'}
                   </p>
                 </div>
 
@@ -1005,7 +1050,11 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder={`向 ${selectedModel} 提问，或让 Agent 执行任务...`}
+                    placeholder={
+                      isAgentMode
+                        ? `Ask ${selectedModel} or give an agent task...`
+                        : `Message ${selectedModel}...`
+                    }
                     disabled={isStreaming}
                     className="w-full pl-4 pr-12 py-3.5 text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-hkbu-blue-500/40 focus:border-hkbu-blue-500 text-slate-900 dark:text-white placeholder-slate-400 shadow-sm transition-all"
                   />
@@ -1023,11 +1072,11 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-left max-w-xl mx-auto">
                   {heroCards.map((card, i) => (
                     <button
-                      key={i}
+                      key={`${isAgentMode ? 'agent' : 'chat'}-${i}`}
                       type="button"
                       onClick={() => handleSend(card.prompt)}
                       disabled={isStreaming}
-                      className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/60 hover:border-hkbu-blue-400 dark:hover:border-hkbu-blue-600 hover:shadow-sm transition-all text-left group cursor-pointer"
+                      className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/60 hover:border-hkbu-blue-400 dark:hover:border-hkbu-blue-600 hover:shadow-sm transition-all duration-200 text-left group cursor-pointer animate-fadeIn"
                     >
                       <div className="flex items-center space-x-2 mb-1">
                         <span className="text-base">{card.icon}</span>
@@ -1266,17 +1315,17 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
 
               {/* Quick Prompts if conversation is fresh */}
               {currentSession.messages.length <= 2 && (
-                <div className="px-4 sm:px-6 py-2 bg-slate-50/50 dark:bg-slate-850/50 border-t border-slate-100 dark:border-slate-800/80 shrink-0">
+                <div className="px-4 sm:px-6 py-2 bg-slate-50/50 dark:bg-slate-800/60 border-t border-slate-100 dark:border-slate-800/80 shrink-0 transition-colors">
                   <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
                     Suggested Prompts
                   </span>
                   <div className="flex items-center space-x-2 overflow-x-auto pb-1">
                     {quickPrompts.map((prompt, i) => (
                       <button
-                        key={i}
+                        key={`${isAgentMode ? 'agent' : 'chat'}-${i}`}
                         onClick={() => handleSend(prompt)}
                         disabled={isStreaming}
-                        className="whitespace-nowrap px-2.5 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-slate-600 dark:text-slate-300 hover:border-hkbu-blue-400 hover:text-hkbu-blue-600 dark:hover:text-hkbu-blue-400 transition-all flex-shrink-0 cursor-pointer"
+                        className="whitespace-nowrap px-2.5 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-slate-600 dark:text-slate-300 hover:border-hkbu-blue-400 hover:text-hkbu-blue-600 dark:hover:text-hkbu-blue-400 transition-all flex-shrink-0 cursor-pointer animate-fadeIn"
                       >
                         {prompt}
                       </button>
@@ -1301,8 +1350,8 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                     onKeyDown={handleKeyDown}
                     placeholder={
                       isAgentMode
-                        ? `向 ${selectedModel} 提问，或让 Agent 执行任务... (Enter 发送, Shift+Enter 换行)`
-                        : `向 ${selectedModel} 发送消息... (Enter 发送, Shift+Enter 换行)`
+                        ? `Ask ${selectedModel} or instruct the agent... (Enter to send, Shift+Enter for newline)`
+                        : `Message ${selectedModel}... (Enter to send, Shift+Enter for newline)`
                     }
                     disabled={isStreaming}
                     className="flex-1 max-h-32 min-h-[42px] px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-hkbu-blue-500/30 focus:border-hkbu-blue-500 text-slate-900 dark:text-white placeholder-slate-400 resize-none transition-all leading-relaxed"
@@ -1345,10 +1394,10 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    本地执行助手 (Local Node Companion)
+                    Local Node Companion
                   </h3>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    高阶本地宿主机终端执行支持 · 状态探测与免安装指引
+                    Host terminal execution & zero-setup client guide
                   </p>
                 </div>
               </div>
@@ -1364,22 +1413,22 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
             <div className="p-3.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 text-xs space-y-1.5">
               <div className="flex items-center space-x-1.5 font-bold text-emerald-800 dark:text-emerald-300">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>绝大多数场景完全无需安装！</span>
+                <span>Zero Installation Required for Most Tasks!</span>
               </div>
               <p className="text-emerald-700/90 dark:text-emerald-400/90 leading-relaxed text-[11px]">
-                网页已内置 <strong>WebAssembly Python 3.12</strong>（自带 NumPy、Pandas、Matplotlib），并可直接通过浏览器授权读写本地文件夹。数据分析、图表生成、学术检索等功能<strong>开箱即用，无需配置环境</strong>。
+                This web application includes built-in <strong>WebAssembly Python 3.12</strong> (with NumPy, Pandas, and Matplotlib) and direct in-browser access to local folders. Data analysis, chart rendering, and academic research work <strong>out-of-the-box with zero environment setup</strong>.
               </p>
             </div>
 
             {/* Current Status */}
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
               <span className="font-medium text-slate-600 dark:text-slate-300">
-                127.0.0.1:9001 节点状态:
+                127.0.0.1:9001 Node Status:
               </span>
               <div className="flex items-center space-x-2">
                 <span className={`w-2 h-2 rounded-full ${companionConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}></span>
                 <span className={`font-semibold ${companionConnected ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                  {companionConnected ? '已连接 (可运行系统命令)' : '未连接 (宿主机命令行未激活)'}
+                  {companionConnected ? 'Connected (Host CLI active)' : 'Not connected (Host CLI disabled)'}
                 </span>
               </div>
             </div>
@@ -1387,10 +1436,10 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
             {/* Download and Launch for Power Users */}
             <div className="space-y-2 text-xs">
               <h4 className="font-bold text-slate-800 dark:text-slate-200">
-                需要调用系统终端（Git / 本机软件 / 编译环境）？
+                Need System Terminal Execution (Git / CLI tools / Native Compilers)?
               </h4>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                下载微型守护脚本（仅使用 Python 原生标准库，无任何 pip 依赖），双击即可运行：
+                Download the lightweight companion daemon (pure Python standard library, zero pip packages required) and run it locally:
               </p>
 
               <div className="grid grid-cols-2 gap-2 pt-1">
@@ -1400,7 +1449,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                   className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 flex items-center justify-center space-x-1.5 font-semibold text-[11px] shadow-2xs"
                 >
                   <Download className="w-3.5 h-3.5 text-hkbu-blue-600 dark:text-hkbu-blue-400" />
-                  <span>下载 companion.py</span>
+                  <span>Download companion.py</span>
                 </a>
                 <button
                   type="button"
@@ -1408,21 +1457,21 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                     const res = await probeCompanion();
                     setCompanionConnected(res.connected);
                     if (res.connected) {
-                      alert('探测成功：已连接到本地助手 (127.0.0.1:9001)！');
+                      alert('Connected successfully to local companion node at 127.0.0.1:9001!');
                     } else {
-                      alert('未检测到本地助手。请确认脚本已启动在 9001 端口。');
+                      alert('Local companion not detected. Please verify that the companion script is running on port 9001.');
                     }
                   }}
                   className="p-2.5 rounded-lg border border-hkbu-blue-200 dark:border-hkbu-blue-800 bg-hkbu-blue-50 dark:bg-hkbu-blue-950/60 hover:bg-hkbu-blue-100 text-hkbu-blue-700 dark:text-hkbu-blue-300 flex items-center justify-center space-x-1.5 font-semibold text-[11px] shadow-2xs cursor-pointer"
                 >
                   <RotateCw className="w-3.5 h-3.5" />
-                  <span>刷新探测状态</span>
+                  <span>Probe Connection</span>
                 </button>
               </div>
 
               <div className="pt-2">
                 <span className="text-[11px] text-slate-500 dark:text-slate-400 block mb-1">
-                  或者在终端中一键启动：
+                  Or launch directly in terminal:
                 </span>
                 <code className="block p-2 rounded bg-slate-100 dark:bg-slate-950 font-mono text-[10px] text-slate-700 dark:text-slate-300 break-all select-all">
                   python companion/hkbu_genai_companion.py
@@ -1436,7 +1485,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                 onClick={() => setShowHelperModal(false)}
                 className="px-4 py-1.5 bg-hkbu-blue-700 hover:bg-hkbu-blue-800 text-white rounded-lg font-semibold text-xs transition-colors cursor-pointer shadow-xs"
               >
-                我知道了
+                Got it
               </button>
             </div>
           </div>
