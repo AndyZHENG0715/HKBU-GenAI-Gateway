@@ -1,10 +1,27 @@
-import React from 'react';
-import { ExternalLink, ShieldCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { ExternalLink, ShieldCheck, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { MarkdownRenderer } from './MarkdownRenderer';
+import pkg from '../../package.json';
+import changelogRaw from '../../../CHANGELOG.md?raw';
 
 export const Footer: React.FC = () => {
+  const [showChangelog, setShowChangelog] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('hkbu_changelog_open') === '1';
+    }
+    return false;
+  });
+
+  const toggleChangelog = () => {
+    setShowChangelog((prev) => {
+      localStorage.setItem('hkbu_changelog_open', prev ? '0' : '1');
+      return !prev;
+    });
+  };
+
   return (
     <footer className="mt-16 border-t border-slate-200 dark:border-slate-800 py-8 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm text-xs text-slate-500 dark:text-slate-400">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-2">
             <div className="w-5 h-5 rounded-md bg-hkbu-blue-700 text-white flex items-center justify-center font-bold text-[10px] font-mono">
@@ -12,6 +29,9 @@ export const Footer: React.FC = () => {
             </div>
             <span className="font-semibold text-slate-700 dark:text-slate-300">
               HKBU GenAI Gateway
+            </span>
+            <span className="px-1.5 py-0.5 rounded-md bg-hkbu-blue-100/80 dark:bg-hkbu-blue-900/50 text-hkbu-blue-800 dark:text-hkbu-blue-200 border border-hkbu-blue-200 dark:border-hkbu-blue-700/60 font-mono text-[10px] font-semibold">
+              v{pkg.version}
             </span>
             <span>·</span>
             <span>Made for HKBU Students & Researchers</span>
@@ -33,6 +53,29 @@ export const Footer: React.FC = () => {
               <span>Encrypted at rest</span>
             </span>
           </div>
+        </div>
+
+        {/* Changelog toggle */}
+        <div className="border-t border-slate-200 dark:border-slate-800 pt-3">
+          <button
+            onClick={toggleChangelog}
+            aria-expanded={showChangelog}
+            className="flex items-center space-x-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-hkbu-blue-600 dark:hover:text-hkbu-blue-400 transition-colors cursor-pointer"
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>What&apos;s new in v{pkg.version}</span>
+            {showChangelog ? (
+              <ChevronUp className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5" />
+            )}
+          </button>
+
+          {showChangelog && (
+            <div className="mt-3 max-h-96 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 sm:p-6 text-left shadow-inner animate-fadeIn">
+              <MarkdownRenderer content={changelogRaw} />
+            </div>
+          )}
         </div>
       </div>
     </footer>
