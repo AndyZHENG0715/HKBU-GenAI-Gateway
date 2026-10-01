@@ -16,7 +16,7 @@ from pathlib import Path
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -553,6 +553,20 @@ async def embeddings(
         status = exc.status_code if isinstance(exc, UpstreamError) else 502
         detail = exc.detail if isinstance(exc, UpstreamError) else str(exc)
         return JSONResponse(status_code=status, content=openai_error(detail, "upstream_error"))
+
+
+@app.get("/api/companion/download")
+async def download_companion():
+    companion_path = Path(__file__).resolve().parents[2] / "companion" / "hkbu_genai_companion.py"
+    if not companion_path.is_file():
+        companion_path = Path("companion/hkbu_genai_companion.py").resolve()
+    if not companion_path.is_file():
+        raise HTTPException(status_code=404, detail="Companion script not found")
+    return FileResponse(
+        path=str(companion_path),
+        filename="hkbu_genai_companion.py",
+        media_type="text/x-python",
+    )
 
 
 static_dir = Path(__file__).resolve().parents[2] / "static"

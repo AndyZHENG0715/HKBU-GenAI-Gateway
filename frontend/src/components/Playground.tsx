@@ -22,6 +22,8 @@ import {
   Calculator,
   CheckCircle2,
   FolderPlus,
+  X,
+  Download,
 } from 'lucide-react';
 import { SUPPORTED_MODELS } from '../lib/models';
 import { streamChatCompletion, StreamChunk } from '../lib/api';
@@ -118,12 +120,19 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
   const [agentProgress, setAgentProgress] = useState<string | null>(null);
   const [workspaceDir, setWorkspaceDir] = useState<string>(() => getWorkspaceDirectoryName());
   const [companionConnected, setCompanionConnected] = useState<boolean>(false);
+  const [showHelperModal, setShowHelperModal] = useState<boolean>(false);
 
   useEffect(() => {
     probeCompanion().then((res) => {
       if (res.connected) setCompanionConnected(true);
     });
   }, []);
+
+  const handleOpenHelperModal = async () => {
+    setShowHelperModal(true);
+    const res = await probeCompanion();
+    setCompanionConnected(res.connected);
+  };
 
   // Message action states
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
@@ -140,6 +149,9 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
 
   const selectedModel = currentSession?.model || 'gpt-4.1';
   const isAgentMode = currentSession?.isAgentMode ?? true;
+  const userMessageCount = useMemo(() => {
+    return (currentSession?.messages || []).filter((m) => m.role === 'user').length;
+  }, [currentSession?.messages]);
 
   const handleToggleAgentMode = () => {
     updateCurrentSession((s) => ({
@@ -625,85 +637,146 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
     'Compare the pros and cons of qualitative vs quantitative research.',
   ];
 
+  const heroCards = [
+    {
+      icon: '📊',
+      title: '分析本地数据',
+      desc: '读取本地 CSV/Excel，进行统计分析并生成可视化图表',
+      prompt: '请帮我分析工作区中的数据文件，统计关键指标，并用 Python 绘制可视化趋势图。',
+    },
+    {
+      icon: '🐍',
+      title: 'Python 科学计算',
+      desc: '在浏览器沙盒中运行 Python 3.12 代码解决算法或计算问题',
+      prompt: '请编写一个 Python 脚本来计算斐波那契数列前 20 项，并评估其执行效率。',
+    },
+    {
+      icon: '🌐',
+      title: '文献与信息检索',
+      desc: '抓取学术网页或技术文档，提炼要点与技术对比',
+      prompt: '请检索关于大语言模型自主 Agent 架构的最新技术进展，并总结其核心模块与挑战。',
+    },
+    {
+      icon: '💡',
+      title: '论文研究构想',
+      desc: '结合最新学术热点，构思研究思路与论文框架',
+      prompt: '请帮我构思一个关于人工智能在高等教育中的应用与伦理风险的研究大纲。',
+    },
+  ];
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
   const chatModels = SUPPORTED_MODELS.filter((m) => m.kind === 'chat');
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col h-[780px] max-h-[85vh] transition-all">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xl overflow-hidden flex-1 min-h-0 h-full flex flex-col transition-all">
       {/* Playground Top Bar */}
-      <div className="p-3 sm:px-5 bg-slate-50/90 dark:bg-slate-850 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center space-x-2 sm:space-x-3">
-          {/* Toggle History Sidebar */}
+      <div className="px-3 sm:px-4 py-2.5 bg-slate-50/90 dark:bg-slate-850/90 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-2 shrink-0">
+        {/* Left: Sidebar Toggle & Session Name */}
+        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
           <button
             onClick={() => setShowSidebar(!showSidebar)}
-            className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+            className={`p-1.5 rounded-lg border transition-all cursor-pointer shrink-0 ${
               showSidebar
                 ? 'bg-hkbu-blue-50 dark:bg-hkbu-blue-900/40 text-hkbu-blue-700 dark:text-hkbu-blue-300 border-hkbu-blue-200 dark:border-hkbu-blue-800'
-                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
             }`}
             title={showSidebar ? 'Hide History Sidebar' : 'Show History Sidebar'}
           >
             <History className="w-4 h-4" />
           </button>
 
-          <div className="w-8 h-8 rounded-lg bg-hkbu-blue-100 dark:bg-hkbu-blue-900/60 text-hkbu-blue-700 dark:text-hkbu-blue-300 flex items-center justify-center font-bold text-xs">
-            AI
-          </div>
-          <div>
-            <h3 className="font-bold text-sm text-slate-900 dark:text-white leading-tight">
-              Interactive Chat Playground
-            </h3>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              HKBU multi-turn conversational testing
-            </p>
+          <div className="hidden sm:flex items-center space-x-2 min-w-0">
+            <span className="font-semibold text-xs text-slate-800 dark:text-slate-200 truncate max-w-[160px]">
+              {currentSession.title}
+            </span>
           </div>
         </div>
 
-        {/* Model Selector & Actions */}
-        <div className="flex items-center space-x-2 sm:space-x-3 w-full sm:w-auto">
-          {/* Mode Switcher Button */}
+        {/* Center: ChatGPT / Cherry Studio Segmented Control [ Chat | Agent ] */}
+        <div className="inline-flex p-0.5 rounded-xl bg-slate-200/80 dark:bg-slate-800 border border-slate-300/60 dark:border-slate-700/80 shadow-inner">
           <button
-            onClick={handleToggleAgentMode}
+            type="button"
+            onClick={() => {
+              if (isAgentMode) handleToggleAgentMode();
+            }}
             disabled={isStreaming}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs ${
-              isAgentMode
-                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold'
-                : 'bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700'
+            className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              !isAgentMode
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
             }`}
-            title={isAgentMode ? 'Switch to Standard Chat' : 'Enable Autonomous Agent Mode'}
           >
-            <Zap className={`w-3.5 h-3.5 ${isAgentMode ? 'fill-current' : ''}`} />
-            <span>{isAgentMode ? 'Agent Mode' : 'Chat Mode'}</span>
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span>Chat</span>
           </button>
 
-          {/* Model Dropdown */}
+          <button
+            type="button"
+            onClick={() => {
+              if (!isAgentMode) handleToggleAgentMode();
+            }}
+            disabled={isStreaming}
+            className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              isAgentMode
+                ? 'bg-hkbu-blue-700 dark:bg-hkbu-blue-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+            }`}
+          >
+            <Zap className={`w-3.5 h-3.5 ${isAgentMode ? 'fill-current' : ''}`} />
+            <span>Agent</span>
+          </button>
+        </div>
+
+        {/* Right: Model Selector + New Chat + Helper Trigger */}
+        <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
           <select
             value={selectedModel}
             onChange={(e) => handleModelChange(e.target.value)}
             disabled={isStreaming}
-            className="text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-hkbu-blue-500 shadow-sm cursor-pointer"
+            className="text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 sm:px-2.5 py-1 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-hkbu-blue-500 shadow-2xs cursor-pointer max-w-[125px] sm:max-w-[180px] truncate"
           >
             {chatModels.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.name} ({m.provider})
+                {m.name}
               </option>
             ))}
           </select>
 
-          {/* New Chat Button */}
           <button
             onClick={handleNewChat}
             disabled={isStreaming}
             title="Start new conversation"
-            className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-hkbu-blue-50 dark:bg-hkbu-blue-950/60 text-hkbu-blue-700 dark:text-hkbu-blue-300 hover:bg-hkbu-blue-100 border border-hkbu-blue-200 dark:border-hkbu-blue-800/80 flex items-center space-x-1 cursor-pointer transition-colors"
+            className="p-1 sm:px-2.5 sm:py-1 rounded-lg text-xs font-medium bg-hkbu-blue-50 dark:bg-hkbu-blue-950/60 text-hkbu-blue-700 dark:text-hkbu-blue-300 hover:bg-hkbu-blue-100 dark:hover:bg-hkbu-blue-900/60 border border-hkbu-blue-200 dark:border-hkbu-blue-800/80 flex items-center space-x-1 cursor-pointer transition-colors shadow-2xs"
           >
             <Plus className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">New Chat</span>
           </button>
+
+          {isAgentMode && (
+            <button
+              onClick={handleOpenHelperModal}
+              className={`p-1 sm:px-2 sm:py-1 rounded-lg text-xs font-medium flex items-center space-x-1 transition-all cursor-pointer shadow-2xs border ${
+                companionConnected
+                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+              }`}
+              title="本地执行助手说明与连接状态"
+            >
+              <span className={`w-2 h-2 rounded-full ${companionConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+              <span className="hidden md:inline">{companionConnected ? '已连本地节点' : '本地助手'}</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Gateway Key Banner */}
-      <div className="px-4 sm:px-6 py-2 bg-hkbu-blue-50/50 dark:bg-hkbu-blue-950/20 border-b border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between gap-2 text-xs">
+      {/* Gateway Key Compact Banner */}
+      <div className="px-3 sm:px-4 py-1.5 bg-hkbu-blue-50/40 dark:bg-hkbu-blue-950/20 border-b border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between gap-2 text-xs shrink-0">
         <div className="flex items-center space-x-1.5 text-slate-600 dark:text-slate-300 font-medium">
           <Key className="w-3.5 h-3.5 text-hkbu-gold-500" />
           <span>Active Key:</span>
@@ -721,14 +794,14 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="Paste hkbu-gw-... key"
-            className="px-2 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-mono w-40 sm:w-56 focus:outline-none focus:ring-1 focus:ring-hkbu-blue-500"
+            className="px-2 py-0.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-mono w-36 sm:w-56 focus:outline-none focus:ring-1 focus:ring-hkbu-blue-500"
           />
         </div>
       </div>
 
       {/* Agent Capabilities & Workspace Toolbar */}
       {isAgentMode && (
-        <div className="px-4 sm:px-6 py-2 bg-slate-100/70 dark:bg-slate-850/80 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="px-3 sm:px-4 py-1.5 bg-slate-100/70 dark:bg-slate-850/80 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
           {/* Active tools badges */}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mr-1">
@@ -752,25 +825,19 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
             </span>
             {companionConnected ? (
               <span
-                className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-[11px] font-medium shadow-xs"
-                title="Connected to local companion node (127.0.0.1:9001). Host terminal execution active."
+                className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-medium shadow-xs"
+                title="已连接本地助手 (127.0.0.1:9001)，已启用宿主机终端执行"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>Host Terminal (Node 9001)</span>
+                <span>Host Terminal (9001)</span>
               </span>
             ) : (
               <button
-                onClick={async () => {
-                  const res = await probeCompanion();
-                  setCompanionConnected(res.connected);
-                  if (!res.connected) {
-                    alert('Local Companion not detected on 127.0.0.1:9001.\n\nTo enable local host terminal execution, run:\npython companion/hkbu_genai_companion.py');
-                  }
-                }}
-                className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[11px] text-slate-500 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors cursor-pointer"
-                title="Connect local terminal companion daemon"
+                onClick={handleOpenHelperModal}
+                className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[11px] text-slate-500 dark:text-slate-400 hover:text-hkbu-blue-600 dark:hover:text-hkbu-blue-400 transition-colors cursor-pointer"
+                title="查看免安装本地助手说明"
               >
-                <span>+ Local Node</span>
+                <span>+ 本地终端 (可选)</span>
               </button>
             )}
           </div>
@@ -788,8 +855,8 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
               <button
                 onClick={handleSelectDirectory}
                 disabled={isStreaming}
-                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 font-medium text-[11px] transition-colors cursor-pointer shadow-xs"
-                title="Select a local workspace folder for the agent to inspect or edit"
+                className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 font-medium text-[11px] transition-colors cursor-pointer shadow-2xs"
+                title="选择本地工作区文件夹，授权 Agent 进行文件读写与数据分析"
               >
                 {workspaceDir ? (
                   <>
@@ -904,287 +971,477 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
 
         {/* Chat Area */}
         <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-slate-900">
-          {/* Messages Scroll Area */}
-          <div
-            ref={messagesContainerRef}
-            className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 overscroll-contain"
-          >
-            {currentSession.messages.map((msg, index) => {
-              const isUser = msg.role === 'user';
-              const isEditing = editingMsgId === msg.id;
-
-              return (
-                <div
-                  key={msg.id}
-                  className={`flex items-start space-x-3 ${
-                    isUser ? 'flex-row-reverse space-x-reverse' : 'flex-row'
-                  }`}
-                >
-                  {/* Avatar */}
-                  <div
-                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm mt-0.5 ${
-                      isUser
-                        ? 'bg-hkbu-blue-700 text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-hkbu-blue-700 dark:text-hkbu-blue-300 border border-slate-200 dark:border-slate-700'
-                    }`}
-                  >
-                    {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+          {userMessageCount === 0 ? (
+            /* Centered Hero View (Cherry Studio / OpenWebUI style) */
+            <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-4 sm:p-8 overflow-y-auto">
+              <div className="max-w-2xl w-full text-center space-y-6 animate-fadeIn">
+                <div className="space-y-2">
+                  <div className="w-12 h-12 mx-auto rounded-2xl bg-hkbu-blue-100 dark:bg-hkbu-blue-900/60 text-hkbu-blue-700 dark:text-hkbu-blue-300 flex items-center justify-center font-bold text-lg shadow-sm">
+                    {isAgentMode ? (
+                      <Zap className="w-6 h-6 text-hkbu-gold-500 fill-current" />
+                    ) : (
+                      <Bot className="w-6 h-6 text-hkbu-blue-600 dark:text-hkbu-blue-400" />
+                    )}
                   </div>
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                    今天有什么想做的？
+                  </h2>
+                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                    {isAgentMode
+                      ? '已启用 Agent 模式 · 浏览器端 Python 运行、文件处理与网页检索'
+                      : '已启用 Chat 模式 · 享受纯粹的高速多轮大模型对话体验'}
+                  </p>
+                </div>
 
-                  {/* Message Bubble + Action Toolbar Container */}
-                  <div className={`max-w-[88%] sm:max-w-[80%] flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
-                    {/* Bubble */}
+                {/* Hero Centered Capsule Input */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSend();
+                  }}
+                  className="relative max-w-xl mx-auto"
+                >
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder={`向 ${selectedModel} 提问，或让 Agent 执行任务...`}
+                    disabled={isStreaming}
+                    className="w-full pl-4 pr-12 py-3.5 text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-hkbu-blue-500/40 focus:border-hkbu-blue-500 text-slate-900 dark:text-white placeholder-slate-400 shadow-sm transition-all"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!input.trim() || isStreaming}
+                    className="absolute right-2 top-2 p-2 rounded-xl bg-hkbu-blue-700 hover:bg-hkbu-blue-800 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-sm transition-all cursor-pointer flex items-center justify-center"
+                    title="Send"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </form>
+
+                {/* Inspiration Cards Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-left max-w-xl mx-auto">
+                  {heroCards.map((card, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => handleSend(card.prompt)}
+                      disabled={isStreaming}
+                      className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/60 hover:border-hkbu-blue-400 dark:hover:border-hkbu-blue-600 hover:shadow-sm transition-all text-left group cursor-pointer"
+                    >
+                      <div className="flex items-center space-x-2 mb-1">
+                        <span className="text-base">{card.icon}</span>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-hkbu-blue-600 dark:group-hover:text-hkbu-blue-400 transition-colors">
+                          {card.title}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                        {card.desc}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Messages Scroll Area */}
+              <div
+                ref={messagesContainerRef}
+                className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 overscroll-contain"
+              >
+                {currentSession.messages.map((msg, index) => {
+                  const isUser = msg.role === 'user';
+                  const isEditing = editingMsgId === msg.id;
+
+                  return (
                     <div
-                      className={`w-full rounded-2xl p-4 text-sm leading-relaxed shadow-sm ${
-                        isUser
-                          ? 'bg-hkbu-blue-700 text-white rounded-tr-none'
-                          : 'bg-slate-50 dark:bg-slate-800/90 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 rounded-tl-none'
+                      key={msg.id}
+                      className={`flex items-start space-x-3 ${
+                        isUser ? 'flex-row-reverse space-x-reverse' : 'flex-row'
                       }`}
                     >
-                      {/* Inline User Editing Mode */}
-                      {isEditing ? (
-                        <div className="space-y-2 min-w-[260px] sm:min-w-[340px]">
-                          <textarea
-                            value={editInput}
-                            onChange={(e) => setEditInput(e.target.value)}
-                            rows={3}
-                            className="w-full text-xs sm:text-sm p-2.5 rounded-lg bg-white dark:bg-slate-850 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-1 focus:ring-hkbu-blue-500"
-                          />
-                          <div className="flex items-center justify-end space-x-2">
-                            <button
-                              onClick={() => setEditingMsgId(null)}
-                              className="px-2.5 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors cursor-pointer"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={() => handleSaveEdit(index)}
-                              className="px-3 py-1 text-xs font-semibold bg-hkbu-gold-500 hover:bg-hkbu-gold-400 text-slate-950 rounded shadow-sm transition-colors cursor-pointer"
-                            >
-                              Save & Submit
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          {/* Thinking Process Accordion for DeepSeek / Reasoning models */}
-                          {!isUser && (msg.reasoning || msg.isThinking) && (
-                            <ThinkingBox
-                              reasoning={msg.reasoning || ''}
-                              isThinking={msg.isThinking}
-                            />
-                          )}
+                      {/* Avatar */}
+                      <div
+                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm mt-0.5 ${
+                          isUser
+                            ? 'bg-hkbu-blue-700 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-hkbu-blue-700 dark:text-hkbu-blue-300 border border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                      </div>
 
-                          {/* Tool Calls Rendering */}
-                          {!isUser && msg.toolCalls && msg.toolCalls.length > 0 && (
-                            <div className="my-2 space-y-1.5 w-full">
-                              {msg.toolCalls.map((tc) => (
-                                <ToolCallCard key={tc.callId} toolCall={tc} />
-                              ))}
+                      {/* Message Bubble + Action Toolbar Container */}
+                      <div className={`max-w-[88%] sm:max-w-[80%] flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+                        {/* Bubble */}
+                        <div
+                          className={`w-full rounded-2xl p-4 text-sm leading-relaxed shadow-sm ${
+                            isUser
+                              ? 'bg-hkbu-blue-700 text-white rounded-tr-none'
+                              : 'bg-slate-50 dark:bg-slate-800/90 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 rounded-tl-none'
+                          }`}
+                        >
+                          {/* Inline User Editing Mode */}
+                          {isEditing ? (
+                            <div className="space-y-2 min-w-[260px] sm:min-w-[340px]">
+                              <textarea
+                                value={editInput}
+                                onChange={(e) => setEditInput(e.target.value)}
+                                rows={3}
+                                className="w-full text-xs sm:text-sm p-2.5 rounded-lg bg-white dark:bg-slate-850 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-1 focus:ring-hkbu-blue-500"
+                              />
+                              <div className="flex items-center justify-end space-x-2">
+                                <button
+                                  onClick={() => setEditingMsgId(null)}
+                                  className="px-2.5 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={() => handleSaveEdit(index)}
+                                  className="px-3 py-1 text-xs font-semibold bg-hkbu-gold-500 hover:bg-hkbu-gold-400 text-slate-950 rounded shadow-sm transition-colors cursor-pointer"
+                                >
+                                  Save & Submit
+                                </button>
+                              </div>
                             </div>
-                          )}
-
-                          {/* Message Content with Rich Markdown Rendering */}
-                          {isUser ? (
-                            <div className="whitespace-pre-wrap break-words">{msg.content}</div>
                           ) : (
-                            <div>
-                              {msg.content ? (
-                                <MarkdownRenderer content={msg.content} />
-                              ) : msg.isThinking ? (
-                                <div className="text-xs text-slate-400 dark:text-slate-500 italic flex items-center space-x-1.5 py-1">
-                                  <Sparkles className="w-3.5 h-3.5 animate-spin text-hkbu-gold-500" />
-                                  <span>Generating reasoning thoughts...</span>
-                                </div>
-                              ) : isStreaming && index === currentSession.messages.length - 1 ? (
-                                <span className="inline-block w-2 h-4 bg-hkbu-blue-500 animate-pulse ml-1 align-middle"></span>
-                              ) : null}
+                            <>
+                              {/* Thinking Process Accordion for DeepSeek / Reasoning models */}
+                              {!isUser && (msg.reasoning || msg.isThinking) && (
+                                <ThinkingBox
+                                  reasoning={msg.reasoning || ''}
+                                  isThinking={msg.isThinking}
+                                />
+                              )}
 
-                              {/* Error Box inside Assistant bubble if generation failed */}
-                              {msg.error && (
-                                <div className="mt-2.5 p-3 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900/80 text-xs text-red-700 dark:text-red-300 space-y-2">
-                                  <div className="flex items-start space-x-2">
-                                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                                    <div>
-                                      <p className="font-semibold">{msg.error}</p>
-                                      <p className="text-[11px] text-red-600/90 dark:text-red-400/90 mt-0.5">
-                                        {selectedModel.toLowerCase().includes('deepseek')
-                                          ? 'HKBU DeepSeek deployment may be overloaded. Click Retry or switch to Gemini 2.5 Flash below.'
-                                          : 'You can retry this prompt now.'}
-                                      </p>
+                              {/* Tool Calls Rendering */}
+                              {!isUser && msg.toolCalls && msg.toolCalls.length > 0 && (
+                                <div className="my-2 space-y-1.5 w-full">
+                                  {msg.toolCalls.map((tc) => (
+                                    <ToolCallCard key={tc.callId} toolCall={tc} />
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Message Content with Rich Markdown Rendering */}
+                              {isUser ? (
+                                <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                              ) : (
+                                <div>
+                                  {msg.content ? (
+                                    <MarkdownRenderer content={msg.content} />
+                                  ) : msg.isThinking ? (
+                                    <div className="text-xs text-slate-400 dark:text-slate-500 italic flex items-center space-x-1.5 py-1">
+                                      <Sparkles className="w-3.5 h-3.5 animate-spin text-hkbu-gold-500" />
+                                      <span>Generating reasoning thoughts...</span>
                                     </div>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                                    <button
-                                      onClick={() => handleRetry(index)}
-                                      disabled={isStreaming}
-                                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white flex items-center space-x-1 shadow-sm transition-colors cursor-pointer"
-                                    >
-                                      <RotateCw className="w-3 h-3" />
-                                      <span>Retry Message</span>
-                                    </button>
-                                    {selectedModel.toLowerCase().includes('deepseek') && (
-                                      <button
-                                        onClick={() => {
-                                          handleModelChange('gemini-2.5-flash');
-                                          handleRetry(index, 'gemini-2.5-flash');
-                                        }}
-                                        disabled={isStreaming}
-                                        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750 flex items-center space-x-1 transition-colors cursor-pointer shadow-xs"
-                                      >
-                                        <Zap className="w-3 h-3 text-hkbu-gold-500" />
-                                        <span>Try Gemini 2.5 Flash</span>
-                                      </button>
-                                    )}
-                                  </div>
+                                  ) : isStreaming && index === currentSession.messages.length - 1 ? (
+                                    <span className="inline-block w-2 h-4 bg-hkbu-blue-500 animate-pulse ml-1 align-middle"></span>
+                                  ) : null}
+
+                                  {/* Error Box inside Assistant bubble if generation failed */}
+                                  {msg.error && (
+                                    <div className="mt-2.5 p-3 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900/80 text-xs text-red-700 dark:text-red-300 space-y-2">
+                                      <div className="flex items-start space-x-2">
+                                        <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                                        <div>
+                                          <p className="font-semibold">{msg.error}</p>
+                                          <p className="text-[11px] text-red-600/90 dark:text-red-400/90 mt-0.5">
+                                            {selectedModel.toLowerCase().includes('deepseek')
+                                              ? 'HKBU DeepSeek deployment may be overloaded. Click Retry or switch to Gemini 2.5 Flash below.'
+                                              : 'You can retry this prompt now.'}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                                        <button
+                                          onClick={() => handleRetry(index)}
+                                          disabled={isStreaming}
+                                          className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white flex items-center space-x-1 shadow-sm transition-colors cursor-pointer"
+                                        >
+                                          <RotateCw className="w-3 h-3" />
+                                          <span>Retry Message</span>
+                                        </button>
+                                        {selectedModel.toLowerCase().includes('deepseek') && (
+                                          <button
+                                            onClick={() => {
+                                              handleModelChange('gemini-2.5-flash');
+                                              handleRetry(index, 'gemini-2.5-flash');
+                                            }}
+                                            disabled={isStreaming}
+                                            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750 flex items-center space-x-1 transition-colors cursor-pointer shadow-xs"
+                                          >
+                                            <Zap className="w-3 h-3 text-hkbu-gold-500" />
+                                            <span>Try Gemini 2.5 Flash</span>
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               )}
-                            </div>
+                            </>
                           )}
-                        </>
-                      )}
-                    </div>
+                        </div>
 
-                    {/* Prominent Action Toolbar placed cleanly below each bubble */}
-                    {!isEditing && (
-                      <div className="mt-1.5 flex items-center space-x-2 text-xs">
-                        {isUser ? (
-                          /* User Actions: Edit & Copy */
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => handleStartEdit(msg)}
-                              disabled={isStreaming}
-                              type="button"
-                              className="px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-500 hover:text-hkbu-blue-700 dark:text-slate-400 dark:hover:text-hkbu-blue-300 bg-slate-100/80 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 flex items-center space-x-1 transition-colors cursor-pointer shadow-2xs"
-                              title="Edit prompt"
-                            >
-                              <Edit3 className="w-3 h-3 text-hkbu-blue-600 dark:text-hkbu-blue-400" />
-                              <span>Edit</span>
-                            </button>
+                        {/* Prominent Action Toolbar placed cleanly below each bubble */}
+                        {!isEditing && (
+                          <div className="mt-1.5 flex items-center space-x-2 text-xs">
+                            {isUser ? (
+                              /* User Actions: Edit & Copy */
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => handleStartEdit(msg)}
+                                  disabled={isStreaming}
+                                  type="button"
+                                  className="px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-500 hover:text-hkbu-blue-700 dark:text-slate-400 dark:hover:text-hkbu-blue-300 bg-slate-100/80 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 flex items-center space-x-1 transition-colors cursor-pointer shadow-2xs"
+                                  title="Edit prompt"
+                                >
+                                  <Edit3 className="w-3 h-3 text-hkbu-blue-600 dark:text-hkbu-blue-400" />
+                                  <span>Edit</span>
+                                </button>
 
-                            <button
-                              onClick={() => handleCopyMessage(msg.id, msg.content)}
-                              type="button"
-                              className="px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 bg-slate-100/80 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 flex items-center space-x-1 transition-colors cursor-pointer shadow-2xs"
-                              title="Copy prompt"
-                            >
-                              {copiedMsgId === msg.id ? (
-                                <>
-                                  <Check className="w-3 h-3 text-emerald-500" />
-                                  <span className="text-emerald-500">Copied</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="w-3 h-3" />
-                                  <span>Copy</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        ) : (
-                          /* Assistant Actions: Retry & Copy */
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => handleRetry(index)}
-                              disabled={isStreaming}
-                              type="button"
-                              className="px-2.5 py-0.5 rounded-md text-[11px] font-medium text-slate-600 hover:text-hkbu-blue-700 dark:text-slate-300 dark:hover:text-hkbu-blue-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 flex items-center space-x-1 transition-colors cursor-pointer shadow-2xs"
-                              title="Regenerate this response"
-                            >
-                              <RotateCw className="w-3 h-3 text-hkbu-blue-600 dark:text-hkbu-blue-400" />
-                              <span>Retry</span>
-                            </button>
+                                <button
+                                  onClick={() => handleCopyMessage(msg.id, msg.content)}
+                                  type="button"
+                                  className="px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 bg-slate-100/80 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 flex items-center space-x-1 transition-colors cursor-pointer shadow-2xs"
+                                  title="Copy prompt"
+                                >
+                                  {copiedMsgId === msg.id ? (
+                                    <>
+                                      <Check className="w-3 h-3 text-emerald-500" />
+                                      <span className="text-emerald-500">Copied</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-3 h-3" />
+                                      <span>Copy</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            ) : (
+                              /* Assistant Actions: Retry & Copy */
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => handleRetry(index)}
+                                  disabled={isStreaming}
+                                  type="button"
+                                  className="px-2.5 py-0.5 rounded-md text-[11px] font-medium text-slate-600 hover:text-hkbu-blue-700 dark:text-slate-300 dark:hover:text-hkbu-blue-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 flex items-center space-x-1 transition-colors cursor-pointer shadow-2xs"
+                                  title="Regenerate this response"
+                                >
+                                  <RotateCw className="w-3 h-3 text-hkbu-blue-600 dark:text-hkbu-blue-400" />
+                                  <span>Retry</span>
+                                </button>
 
-                            <button
-                              onClick={() => handleCopyMessage(msg.id, msg.content || msg.reasoning || '')}
-                              type="button"
-                              className="px-2.5 py-0.5 rounded-md text-[11px] font-medium text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 flex items-center space-x-1 transition-colors cursor-pointer shadow-2xs"
-                              title="Copy response"
-                            >
-                              {copiedMsgId === msg.id ? (
-                                <>
-                                  <Check className="w-3 h-3 text-emerald-500" />
-                                  <span className="text-emerald-500">Copied</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="w-3 h-3" />
-                                  <span>Copy</span>
-                                </>
-                              )}
-                            </button>
+                                <button
+                                  onClick={() => handleCopyMessage(msg.id, msg.content || msg.reasoning || '')}
+                                  type="button"
+                                  className="px-2.5 py-0.5 rounded-md text-[11px] font-medium text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 flex items-center space-x-1 transition-colors cursor-pointer shadow-2xs"
+                                  title="Copy response"
+                                >
+                                  {copiedMsgId === msg.id ? (
+                                    <>
+                                      <Check className="w-3 h-3 text-emerald-500" />
+                                      <span className="text-emerald-500">Copied</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-3 h-3" />
+                                      <span>Copy</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
-                    )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Quick Prompts if conversation is fresh */}
+              {currentSession.messages.length <= 2 && (
+                <div className="px-4 sm:px-6 py-2 bg-slate-50/50 dark:bg-slate-850/50 border-t border-slate-100 dark:border-slate-800/80 shrink-0">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
+                    Suggested Prompts
+                  </span>
+                  <div className="flex items-center space-x-2 overflow-x-auto pb-1">
+                    {quickPrompts.map((prompt, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleSend(prompt)}
+                        disabled={isStreaming}
+                        className="whitespace-nowrap px-2.5 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-slate-600 dark:text-slate-300 hover:border-hkbu-blue-400 hover:text-hkbu-blue-600 dark:hover:text-hkbu-blue-400 transition-all flex-shrink-0 cursor-pointer"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-
-          {/* Quick Prompts if conversation is fresh */}
-          {currentSession.messages.length <= 2 && (
-            <div className="px-4 sm:px-6 py-2 bg-slate-50/50 dark:bg-slate-850/50 border-t border-slate-100 dark:border-slate-800/80">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
-                Suggested Prompts
-              </span>
-              <div className="flex items-center space-x-2 overflow-x-auto pb-1">
-                {quickPrompts.map((prompt, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSend(prompt)}
-                    disabled={isStreaming}
-                    className="whitespace-nowrap px-2.5 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-slate-600 dark:text-slate-300 hover:border-hkbu-blue-400 hover:text-hkbu-blue-600 dark:hover:text-hkbu-blue-400 transition-all flex-shrink-0 cursor-pointer"
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Chat Input Bar */}
-          <div className="p-3 sm:p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSend();
-              }}
-              className="flex items-center space-x-2"
-            >
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={`Message ${selectedModel}...`}
-                disabled={isStreaming}
-                className="flex-1 px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-hkbu-blue-500/30 focus:border-hkbu-blue-500 text-slate-900 dark:text-white placeholder-slate-400 transition-all"
-              />
-
-              {isStreaming ? (
-                <button
-                  type="button"
-                  onClick={handleStop}
-                  className="p-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium shadow-sm transition-all cursor-pointer flex items-center justify-center"
-                  title="Stop generating"
-                >
-                  <Square className="w-4 h-4 fill-white" />
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={!input.trim() || isStreaming}
-                  className="p-2.5 rounded-xl bg-hkbu-blue-700 hover:bg-hkbu-blue-800 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-sm transition-all cursor-pointer flex items-center justify-center"
-                  title="Send message"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
               )}
-            </form>
-          </div>
+
+              {/* Chat Input Bar */}
+              <div className="p-3 sm:p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shrink-0">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSend();
+                  }}
+                  className="flex items-end space-x-2"
+                >
+                  <textarea
+                    rows={1}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={
+                      isAgentMode
+                        ? `向 ${selectedModel} 提问，或让 Agent 执行任务... (Enter 发送, Shift+Enter 换行)`
+                        : `向 ${selectedModel} 发送消息... (Enter 发送, Shift+Enter 换行)`
+                    }
+                    disabled={isStreaming}
+                    className="flex-1 max-h-32 min-h-[42px] px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-hkbu-blue-500/30 focus:border-hkbu-blue-500 text-slate-900 dark:text-white placeholder-slate-400 resize-none transition-all leading-relaxed"
+                  />
+
+                  {isStreaming ? (
+                    <button
+                      type="button"
+                      onClick={handleStop}
+                      className="p-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium shadow-sm transition-all cursor-pointer flex items-center justify-center shrink-0 mb-0.5"
+                      title="Stop generating"
+                    >
+                      <Square className="w-4 h-4 fill-white" />
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={!input.trim() || isStreaming}
+                      className="p-2.5 rounded-xl bg-hkbu-blue-700 hover:bg-hkbu-blue-800 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-sm transition-all cursor-pointer flex items-center justify-center shrink-0 mb-0.5"
+                      title="Send message"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  )}
+                </form>
+              </div>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Local Companion Helper Modal */}
+      {showHelperModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-3">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-lg bg-hkbu-blue-100 dark:bg-hkbu-blue-900/60 text-hkbu-blue-700 dark:text-hkbu-blue-300 flex items-center justify-center font-bold">
+                  <Terminal className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    本地执行助手 (Local Node Companion)
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    高阶本地宿主机终端执行支持 · 状态探测与免安装指引
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowHelperModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Zero Setup Highlight for Non-Devs */}
+            <div className="p-3.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 text-xs space-y-1.5">
+              <div className="flex items-center space-x-1.5 font-bold text-emerald-800 dark:text-emerald-300">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>绝大多数场景完全无需安装！</span>
+              </div>
+              <p className="text-emerald-700/90 dark:text-emerald-400/90 leading-relaxed text-[11px]">
+                网页已内置 <strong>WebAssembly Python 3.12</strong>（自带 NumPy、Pandas、Matplotlib），并可直接通过浏览器授权读写本地文件夹。数据分析、图表生成、学术检索等功能<strong>开箱即用，无需配置环境</strong>。
+              </p>
+            </div>
+
+            {/* Current Status */}
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
+              <span className="font-medium text-slate-600 dark:text-slate-300">
+                127.0.0.1:9001 节点状态:
+              </span>
+              <div className="flex items-center space-x-2">
+                <span className={`w-2 h-2 rounded-full ${companionConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                <span className={`font-semibold ${companionConnected ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                  {companionConnected ? '已连接 (可运行系统命令)' : '未连接 (宿主机命令行未激活)'}
+                </span>
+              </div>
+            </div>
+
+            {/* Download and Launch for Power Users */}
+            <div className="space-y-2 text-xs">
+              <h4 className="font-bold text-slate-800 dark:text-slate-200">
+                需要调用系统终端（Git / 本机软件 / 编译环境）？
+              </h4>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                下载微型守护脚本（仅使用 Python 原生标准库，无任何 pip 依赖），双击即可运行：
+              </p>
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <a
+                  href="/api/companion/download"
+                  download="hkbu_genai_companion.py"
+                  className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 flex items-center justify-center space-x-1.5 font-semibold text-[11px] shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5 text-hkbu-blue-600 dark:text-hkbu-blue-400" />
+                  <span>下载 companion.py</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await probeCompanion();
+                    setCompanionConnected(res.connected);
+                    if (res.connected) {
+                      alert('探测成功：已连接到本地助手 (127.0.0.1:9001)！');
+                    } else {
+                      alert('未检测到本地助手。请确认脚本已启动在 9001 端口。');
+                    }
+                  }}
+                  className="p-2.5 rounded-lg border border-hkbu-blue-200 dark:border-hkbu-blue-800 bg-hkbu-blue-50 dark:bg-hkbu-blue-950/60 hover:bg-hkbu-blue-100 text-hkbu-blue-700 dark:text-hkbu-blue-300 flex items-center justify-center space-x-1.5 font-semibold text-[11px] shadow-2xs cursor-pointer"
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                  <span>刷新探测状态</span>
+                </button>
+              </div>
+
+              <div className="pt-2">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 block mb-1">
+                  或者在终端中一键启动：
+                </span>
+                <code className="block p-2 rounded bg-slate-100 dark:bg-slate-950 font-mono text-[10px] text-slate-700 dark:text-slate-300 break-all select-all">
+                  python companion/hkbu_genai_companion.py
+                </code>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowHelperModal(false)}
+                className="px-4 py-1.5 bg-hkbu-blue-700 hover:bg-hkbu-blue-800 text-white rounded-lg font-semibold text-xs transition-colors cursor-pointer shadow-xs"
+              >
+                我知道了
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
