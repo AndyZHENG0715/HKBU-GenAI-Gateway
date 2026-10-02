@@ -70,3 +70,19 @@ Target Version: **`2.0.0`** (SemVer major bump: Agentic Playground evolution).
 - [x] **Task 8.6**: Verification & Build: All 82 pytest tests passing, Vite assets compiled cleanly.
 - [x] **Commit 8**: `feat(playground): responsive chat-agent workspace, hero view, and one-click companion`
 
+### Milestone 9: UI Details, Centered Switcher, Dark Mode / i18n, Permanent Tool Retention, and Custom Model Dropdown
+- [x] **Task 9.1**: Mathematically Centered Switcher: Center the `[ 💬 Chat | ⚡ Agent ]` pill switcher in the top bar using `absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2`, preventing local node button from displacing the switcher.
+- [x] **Task 9.2**: Inspiration Prompts & Mode Separation: Distinct hero suggestion cards for Chat mode vs. Agent mode (no Python/data analysis cards in pure chat mode).
+- [x] **Task 9.3**: Theme Consistency & Full English i18n: Register `slate-850` in Tailwind configuration, fix dark/light mode toggle for headers and toolbars, and eliminate language mixing with 100% natural English UI.
+- [x] **Task 9.4**: Custom Styled Model Dropdown (`ModelDropdown.tsx`): Built native-feeling custom dropdown with search filtering, provider badges, category pills, dark/light theme, and click-outside/Escape dismiss.
+- [x] **Task 9.5**: Permanent Tool Retention & Step Tracking: Added `stepIndex` to `ToolCallExecution` and `ToolCallCard.tsx`; preserved accumulated tool calls and reasoning on assistant messages upon stream completion.
+- [x] **Commits**: `db9ad4f`, `0192600`
+
+### Milestone 10: Multi-Turn Memory Restoration & 3-Tier Web Fetch Proxy
+- [x] **Task 10.1**: Upstream History Dropping Fix for Non-Azure Models: Replaced Qwen-only check with generalized `_prepare_history_transcript` in `src/hkbu_gateway/app.py`, ensuring `deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash`, `qwen3-max`, `qwen-plus`, and `llama-4-maverick` retain 100% conversation context.
+- [x] **Task 10.2**: Frontend History Filtering Hardening: Refined `historyCandidates` in `Playground.tsx` so assistant turns with executed tools are preserved even if interim text was empty.
+- [x] **Task 10.3**: Server-Side Web Fetch Proxy (`/api/tools/web_fetch`): Built gateway backend proxy using `httpx` to completely bypass browser CORS restrictions; added HTML text extraction (`_clean_html_text`), timeout safety, and cloud metadata SSRF guard.
+- [x] **Task 10.4**: Companion & Frontend Web Fetch Integration: Added `web_fetch` to companion daemon (`/api/web_fetch`) and implemented 3-tier fallback in `webFetch.ts` (Gateway proxy -> Companion node -> Browser direct).
+- [x] **Task 10.5**: Test Suite Expansion: Expanded unit tests in `tests/test_protocol.py` and `tests/test_companion.py` to 91 passing tests. Rebuilt static frontend assets (`index-D3ihzJPm.js`).
+- [x] **Commits**: `4ebb551`, `a8bff73`
+

@@ -145,12 +145,13 @@ HKBU's centralized GenAI backend exposes a unified URL space (`/openai/deploymen
 Upstream HKBU API documentation exposes OpenAPI schemas globally containing `tools?: ToolDto[]` for all deployments because the school backend is implemented as a shared NestJS service. However, the downstream cloud adapters for Alibaba Cloud Qwen (`qwen3-max`, `qwen-plus`), Google Vertex AI Llama (`llama-4-maverick`), and DeepSeek reject native tool schemas.
 - **Gateway Solution**: The model registry sets `native_tool_call: False` for these models. `tools.py` intercepts incoming client tools, compiles their JSON schemas into a structured system prompt, and strips the native `tools` array from the upstream payload.
 
-### 4.2. Alibaba Cloud Qwen Multi-Turn History Loss
-Live verification on 2026-09-30 revealed that HKBU's adapter for `qwen-plus` and `qwen3-max` forwards only the *final user turn* to DashScope, silently discarding all preceding user and assistant messages:
-- **Gateway Solution (`_prepare_qwen_messages`)**:
+### 4.2. Non-Azure (Qwen, DeepSeek, Llama) Multi-Turn History Loss
+Live verification on 2026-09-30 and 2026-10-02 revealed that HKBU's custom upstream adapters for non-Azure models (`qwen-plus`, `qwen3-max`, `deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash`, `llama-4-maverick`) forward only the *final user turn*, silently discarding all preceding user and assistant messages:
+- **Gateway Solution (`_prepare_history_transcript`)**:
   - Encodes the prior dialogue history as a structured JSON transcript prefixed directly inside the final user message (`Conversation history (oldest to newest): [...] \n\nCurrent user request: ...`).
   - Preserves separate system messages (probes confirmed multiple system messages are received and honored upstream).
   - Remaps `developer` role to `system` (upstream rejects `developer` with HTTP 400).
+  - Anchors the active user goal when the preceding turn is a tool result.
   - Single-turn queries bypass encoding with zero overhead.
 
 ### 4.3. Message Content Shape Normalization (`_sanitize_message_content`)
@@ -173,6 +174,13 @@ Azure OpenAI reasoning deployments reject sampling hyperparameters and standard 
 ### 4.5. Google Gemini Routing
 Gemini deployments (`gemini-2.5-flash`, `gemini-2.5-pro`) reject the standard Azure query parameter `?api-version=...` with HTTP 400 (`Invalid api-version`).
 - The model registry sets `api_version: None` for Gemini models, causing `providers.py` to omit the query string entirely.
+
+### 4.6. Browser CORS & 3-Tier Web Fetch Proxying (`/api/tools/web_fetch`)
+When AI agents attempt to inspect web pages, executing `fetch()` directly in the client browser fails on 99.9% of websites due to browser Same-Origin Policy and lack of `Access-Control-Allow-Origin: *`.
+- **Gateway Solution**:
+  - **Tier 1 (Server-Side Proxy)**: Added `POST /api/tools/web_fetch` to the FastAPI backend, using `httpx` with desktop User-Agent, automatic redirect following, 15-second timeout, SSRF protection against cloud metadata endpoints (`169.254.169.254`), and automated HTML text stripping (`_clean_html_text`).
+  - **Tier 2 (Companion Node)**: Added `POST /api/web_fetch` to `hkbu_genai_companion.py` via Python stdlib `urllib.request`.
+  - **Tier 3 (Browser Direct)**: Maintained as final fallback.
 
 ---
 

@@ -2,13 +2,13 @@
 
 Durable state summary and context handover for AI coding agents and developers.
 
-Last updated: **2026-09-30**. Read [the latest incident handoff](#6-latest-incident-handoff-2026-09-30) before changing request preprocessing or tool emulation.
+Last updated: **2026-10-02**. Read [the latest incident handoff](#7-latest-incident-handoff-2026-10-02) before changing request preprocessing, tool emulation, or web fetch proxying.
 
 ## 1. Project State
 
 - **Current Version**: `2.0.0`
 - **Active Branch**: `feat/agentic-playground`
-- **Test Status**: 80 passing in the latest full run (`PYTHONPATH=src pytest`); 0 failures.
+- **Test Status**: 91 passing in the latest full run (`PYTHONPATH=src pytest`); 0 failures.
 - **Frontend Status**: Built cleanly with Vite (`npm run build` targeting `static/index.html` and `static/hkbuapi4agent.html`).
 - **Local Services**:
   - Gateway runs on `http://127.0.0.1:8000` (FastAPI).
@@ -166,3 +166,35 @@ PYTHONPATH=src .venv/bin/python -m uvicorn hkbu_gateway.app:app --host 127.0.0.1
 ```
 
 The local instance uses the existing repository database/key by default. Do not delete, regenerate, or print them during troubleshooting. VS Code's remote Copilot extension must reach port 8000 in the same remote environment; localhost health checks should run there as well.
+
+---
+
+## 7. Latest Incident Handoff (2026-10-02)
+
+### Incident 1: DeepSeek Multi-Turn Amnesia & Universal History Transcript
+- **Problem**: When interacting with `deepSeek-V4-Pro-hkbu` in Agent Mode, the model suffered from complete amnesia across dialogue turns. The model's chain-of-thought explicitly revealed: *"The conversation history only shows the current turn; there is no previous assistant answer or context."*
+- **Root Cause**: Live probing directly against `https://genai.hkbu.edu.hk` confirmed that HKBU's upstream adapter drops multi-turn message arrays for all non-Azure models (`deepseek`, `qwen`, `llama`), forwarding only `messages[messages.length - 1]`. The gateway's transcript injection was previously restricted exclusively to `qwen-plus` and `qwen3-max`.
+- **Solution**:
+  - Generalized `_prepare_qwen_messages` to `_prepare_history_transcript` in `src/hkbu_gateway/app.py` for all models where `model.provider in ("qwen", "deepseek", "llama")`.
+  - Hardened `historyCandidates` filtering in `frontend/src/components/Playground.tsx` so assistant turns with executed tool calls are preserved even if interim text content was empty.
+  - Retained `_prepare_qwen_messages` alias for backward-compatibility.
+  - Empirically verified against live upstream: DeepSeek accurately recalled previous secrets (`BANANA 99`) and retained complete conversation context.
+
+### Incident 2: Web Fetch Tool Failures & Browser CORS
+- **Problem**: In the Playground's Agent Mode, the `web_fetch` tool consistently failed on almost all public websites with `TypeError: Failed to fetch`.
+- **Root Cause**: Web fetch was executed directly in the browser JavaScript runtime via `fetch()`. The browser's Same-Origin Policy and CORS restrictions block client-side fetch requests to arbitrary third-party domains lacking `Access-Control-Allow-Origin: *`.
+- **Solution (3-Tier Fetch Architecture)**:
+  - **Tier 1 (Gateway Backend Proxy)**: Added `POST /api/tools/web_fetch` to `src/hkbu_gateway/app.py` using `httpx.AsyncClient` with standard User-Agent headers, redirect following, 15-second timeout, SSRF protection against cloud metadata endpoints, and HTML text stripping (`_clean_html_text`). Enabled FastAPI `CORSMiddleware`.
+  - **Tier 2 (Companion Node)**: Added `POST /api/web_fetch` to `companion/hkbu_genai_companion.py` using standard library `urllib.request`.
+  - **Tier 3 (Browser Direct Fetch)**: Maintained as final fallback.
+  - Live verified: Successfully fetched and cleaned pages from `https://example.com` and `https://www.hkbu.edu.hk`.
+
+### Incident 3: UI Centering & Model Dropdown Polish
+- **Problem**: Switching between Chat and Agent displaced the header switcher button; tool call outputs disappeared after completion; dark/light theme had un-styled elements; Chinese and English were mixed.
+- **Solution**:
+  - Centered switcher pill using `absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2`.
+  - Separated hero prompt suggestion cards between Chat and Agent modes.
+  - Standardized theme with `slate-850` and 100% natural English i18n.
+  - Created custom `ModelDropdown.tsx` with search filtering and provider badges.
+  - Preserved accumulated tool calls on assistant message records with step index badges (`Step 1`, `Step 2`).
+

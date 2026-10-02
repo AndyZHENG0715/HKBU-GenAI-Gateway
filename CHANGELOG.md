@@ -5,6 +5,28 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Server-Side Web Fetch Proxy (`src/hkbu_gateway/app.py`, `companion/hkbu_genai_companion.py`)**:
+  - Implemented `POST /api/tools/web_fetch` to bypass browser CORS restrictions when agents fetch public web pages. Includes automated User-Agent headers, redirect following, 15s timeout, HTML text extraction (`_clean_html_text`), and cloud metadata SSRF protection.
+  - Added `POST /api/web_fetch` endpoint to the companion daemon.
+  - Implemented 3-tier fallback in frontend (`webFetch.ts`): Gateway backend proxy -> Companion daemon -> Browser direct.
+- **Custom Styled Model Dropdown (`frontend/src/components/ModelDropdown.tsx`)**:
+  - Replaced standard native HTML select with a custom styled dropdown matching the application palette, featuring real-time search filtering, provider badges, category pills, dark/light theme support, and click-outside/Escape dismiss.
+
+### Fixed
+- **Multi-Turn History Preservation for Non-Azure Models (`src/hkbu_gateway/app.py`, `frontend/src/components/Playground.tsx`)**:
+  - Generalized `_prepare_qwen_messages` to `_prepare_history_transcript`, resolving upstream history dropping across DeepSeek (`deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash`), Qwen (`qwen3-max`, `qwen-plus`), and Llama (`llama-4-maverick`).
+  - Refined `historyCandidates` filtering in `Playground.tsx` so assistant turns with executed tools are preserved in history even if interim text content was empty.
+- **Playground Tool Call Permanent Retention (`frontend/src/components/Playground.tsx`, `ToolCallCard.tsx`)**:
+  - Preserved accumulated tool calls and thinking outputs on assistant messages upon stream completion, preventing cards from disappearing after execution.
+  - Added `stepIndex` tracking to `ToolCallExecution` and rendered `Step X` badges on cards.
+- **Playground Layout & Theme Polish**:
+  - Mathematically centered the `[ 💬 Chat | ⚡ Agent ]` switcher in the top bar (`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2`), preventing displacement when local companion buttons appear.
+  - Separated hero inspiration suggestion cards between Chat Mode and Agent Mode.
+  - Standardized theme consistency with `slate-850` and eliminated Chinese/English language mixing with 100% natural English UI.
+
 ## [2.0.0] - 2026-09-30
 
 ### Added

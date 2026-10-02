@@ -57,23 +57,26 @@ The gateway's streaming pipeline (`src/hkbu_gateway/providers.py` and `src/hkbu_
 
 ---
 
-### Issue 2: Qwen models (`qwen-plus`, `qwen3-max`) forget prior conversation, echo `"GitHub Copilot"`, or answer with generic confusion
+### Issue 2: Non-Azure models (`deepseek`, `qwen`, `llama`) forget prior conversation, suffer amnesia, or answer with generic confusion
 
 #### Symptoms
-- Multi-turn conversation with `qwen-plus` or `qwen3-max` loses all earlier dialogue. For example:
-  - Turn 1: *"9.8大还是9.11大？"* -> Assistant: *"9.11 大于 9.8。"*
-  - Turn 2: *"你确定？"* -> Assistant: *"请提供具体的文本或内容，我将为您检查。"* or simply echoes *"GitHub Copilot"*.
+- Multi-turn conversation with `deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash`, `qwen-plus`, `qwen3-max`, or `llama-4-maverick` loses all earlier dialogue.
+- DeepSeek chain-of-thought explicitly shows:
+  ```text
+  The conversation history only shows the current turn; there is no previous assistant answer or context.
+  ```
 - The model acts as if only the most recent user prompt was provided.
 
 #### Root Causes
-1. **Upstream Adapter History Dropping**: Live probe verification on 2026-09-30 confirmed that HKBU's upstream adapter for Alibaba Cloud Qwen silently discards all prior dialog history and forwards **only the final user turn** to DashScope. When VS Code Copilot appends client identity metadata or short confirmation queries (`"你确定？"`), Qwen only sees that snippet with zero historical context.
+1. **Upstream Adapter History Dropping**: Live probe verification on 2026-09-30 and 2026-10-02 confirmed that HKBU's custom upstream gateway for non-Azure models silently discards all prior dialog history and forwards **only the final user turn**.
 2. **Developer Role Rejection**: HKBU's Qwen endpoint strictly rejects requests containing `role: "developer"` with HTTP 400 (`Allowed roles: system, user, assistant, tool, function`).
 
 #### Gateway Mitigation
 In `src/hkbu_gateway/app.py`:
-- `_prepare_qwen_messages()` detects multi-turn conversations for `qwen-plus` and `qwen3-max` and serializes preceding dialogue into a structured JSON transcript (`Conversation history (oldest to newest): [...]`) prefixed directly into the retained final user turn.
+- `_prepare_history_transcript()` detects multi-turn conversations for `qwen`, `deepseek`, and `llama` models and serializes preceding dialogue into a structured JSON transcript (`Conversation history (oldest to newest): [...]`) prefixed directly into the retained final user turn.
 - Automatically remaps `role: "developer"` to `role: "system"`.
 - Preserves separate system messages (probes confirmed multiple system messages are received and honored upstream).
+- Anchors active user goals when following up on tool result turns.
 
 ---
 
@@ -207,7 +210,21 @@ The SQLite database `hkbu_gateway.db` contains credentials encrypted with a spec
 Unlike Azure OpenAI deployments which require `?api-version=2024-05-01-preview`, HKBU's Gemini deployments reject `api-version` query strings.
 
 #### Gateway Mitigation
-`src/hkbu_gateway/registry.py` declares `api_version: None` for Gemini models. `HKBUProvider._url()` automatically omits the query parameter for Gemini models.
+### Issue 10: Agent Mode `web_fetch` Tool Fails with CORS or `TypeError: Failed to fetch` on Public Websites
+
+#### Symptoms
+- In Playground Agent Mode, requesting the model to fetch a web page (e.g., `https://example.com` or `https://www.hkbu.edu.hk`) results in:
+  ```text
+  Failed to fetch URL: TypeError: Failed to fetch (Target website blocks browser cross-origin requests).
+  ```
+
+#### Root Causes
+Web browsers strictly enforce the Same-Origin Policy (SOP). Directly calling `fetch(url)` from browser JavaScript to any third-party website that does not explicitly send `Access-Control-Allow-Origin: *` headers is immediately blocked by the browser.
+
+#### Gateway Mitigation
+1. **Tier 1 (Gateway Backend Proxy)**: Added `POST /api/tools/web_fetch` to `src/hkbu_gateway/app.py`. Requests are routed through the backend HTTP client with desktop User-Agent, automated redirect handling, HTML tag cleaning (`_clean_html_text`), and cloud metadata SSRF protection.
+2. **Tier 2 (Companion Daemon)**: Added `POST /api/web_fetch` to `companion/hkbu_genai_companion.py`.
+3. **Tier 3 (Browser Direct)**: Maintained as fallback for open CORS endpoints.
 
 ---
 

@@ -15,9 +15,10 @@ Students and researchers can convert their university platform key into standard
   - Full OpenAI `tools: [...]` and `tool_calls` support for **all models** in both streaming and non-streaming modes.
   - Native passthrough for Azure GPT and Google Gemini.
   - Automatic **Prompt-Based Tool Emulation Adapter** (`tools.py`) for DeepSeek (`deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash`), Alibaba Cloud Qwen (`qwen3-max`, `qwen-plus`), and Google Vertex AI Llama (`llama-4-maverick`), seamlessly converting client tool schemas and unparsed upstream responses (both JSON blocks and XML tags like `<read_file>`) into standard OpenAI `tool_calls`.
+  - **🧠 Multi-Turn Context Restoration**: Automatically encapsulates conversation histories as structured transcripts for non-Azure models, overcoming upstream adapter history dropping.
 - **🛡️ Edge Protocol Stabilization for Coding Agents**:
   - Automatically sanitizes complex multi-turn message arrays (`messages[].content` containing Anthropic-style `tool_result` arrays) into plain strings or compliant OpenAI format, resolving upstream NestJS class-validator 400 errors.
-  - Transparently strips unsupported parameters (`temperature`, `top_p`, penalties) when using Azure OpenAI reasoning models (`o1`, `o3-mini`).
+  - Transparently strips unsupported parameters (`temperature`, `top_p`, penalties) when using Azure OpenAI reasoning models (`o1`, `o3-mini`, `gpt-5`).
 - **🔍 Universal Model Discovery & Capabilities**:
   - Exposes `/v1/models`, `/models`, `/v1/model`, `/model`, OpenRouter-compatible `/api/v1/models`, and LiteLLM-compatible `/v1/model/info`.
   - Comprehensive model capabilities metadata following [models.dev](https://models.dev) and Tencent WorkBuddy schemas (`supportsToolCall`, `supportsReasoning`, `supportsVision`, `contextWindow`, `maxTokens`, `tool_call`, `reasoning`, `attachment`, `limit`, `capabilities`).
@@ -26,6 +27,7 @@ Students and researchers can convert their university platform key into standard
   - **Zero Server Overhead on Railway**: All code execution, data science, and file manipulation run on the user's browser or local machine:
     - **In-Browser Python via WebAssembly (Pyodide)**: Runs full CPython 3.12 with NumPy, Pandas, and Matplotlib. Plots render directly inside chat bubbles!
     - **Local Workspace Inspection (Browser File System Access API)**: Select any local folder to let the agent inspect and edit files directly from the browser.
+    - **3-Tier Web Page Content Extractor**: High-resilience web fetching using server proxy (`/api/tools/web_fetch`), local companion, or browser direct fetch, completely bypassing browser CORS restrictions.
     - **Tier 2 Local Companion Node (`companion/hkbu_genai_companion.py`)**: Optional zero-dependency local daemon enabling full host terminal (`bash`) and git execution.
 - **💬 Interactive Web Playground**:
   - Test any university model directly in the browser with real-time SSE streaming.
