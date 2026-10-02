@@ -15,12 +15,20 @@
   - 串流（SSE）與非串流全模式支援標準 OpenAI `tools: [...]` 與 `tool_calls`。
   - Azure GPT 與 Google Gemini 原生直通。
   - 針對 DeepSeek（`deepSeek-V4-Pro-hkbu`、`deepseek-v4-flash`）、阿里通義千問（`qwen3-max`、`qwen-plus`）與 Google Vertex AI Llama（`llama-4-maverick`）內建**基於提示詞的工具模擬適配器**（`tools.py`），無縫將客戶端工具 Schema 與模型輸出（支援 JSON 區塊與 `<read_file>` 等 XML 標籤）轉換為標準 OpenAI `tool_calls`。
+  - **🧠 多輪歷史記憶恢復**：自動將非 Azure 模型的歷史對話壓縮封裝為結構化轉錄，徹底攻克上游適配器丟棄多輪歷史的問題。
 - **🛡️ 面向 Coding Agent 的邊緣協議平抑器**：
   - 自動規整並清洗客戶端多輪對話中的複雜內容陣列（如 VS Code Copilot/Cline 的 `tool_result` 陣列），展平為字串或合規格式，避免上游 NestJS class-validator 400 校驗錯誤。
-  - 透明剔除 Azure OpenAI 推理模型（`o1`、`o3-mini`）不支援的超參數（`temperature`、`top_p` 等）。
+  - 透明剔除 Azure OpenAI 推理模型（`o1`、`o3-mini`、`gpt-5`）不支援的超參數（`temperature`、`top_p` 等）。
 - **🔍 通用模型探索與規格元數據**：
   - 提供 `/v1/models`、`/models`、`/v1/model`、`/model`、相容 OpenRouter 的 `/api/v1/models` 以及相容 LiteLLM 的 `/v1/model/info`。
   - 遵循 [models.dev](https://models.dev) 與騰訊工蜂（WorkBuddy）規格的模型能力完整元數據（`supportsToolCall`、`supportsReasoning`、`supportsVision`、`contextWindow`、`maxTokens`、`tool_call`、`reasoning`、`attachment`、`limit`、`capabilities`）。
+- **🤖 自主 Agentic Playground（客戶端混合運算）**：
+  - 內建參考 Pi agent 與 OpenClaw（「小龍蝦」）極簡架構的自主智能體循環（Agent Loop），支援多步思考、串流工具調用與本地分派。
+  - **Railway 零伺服端算力負擔**：所有程式碼執行、資料科學與檔案讀寫均在使用者瀏覽器或本地電腦完成：
+    - **瀏覽器 WebAssembly Python (Pyodide)**：在使用者瀏覽器中完整運行 CPython 3.12、NumPy、Pandas，產生的 Matplotlib 圖表直接渲染嵌入聊天對話氣泡！
+    - **本地專案資料夾掛載 (File System Access API)**：瀏覽器原生授權選取本地資料夾，Agent 可直接檢視、閱讀、編輯本地專案代碼，0 安裝。
+    - **三層容災網頁抓取 (3-Tier Web Fetch)**：整合伺服端代理（`/api/tools/web_fetch`）、本地助手與瀏覽器直連，徹底穿透跨域 CORS 阻斷。
+    - **Tier 2 本地極客伴侶節點 (`companion/hkbu_genai_companion.py`)**：單一檔案零依賴伴侶腳本，解鎖全功能本地終端執行（Bash / Git）。
 - **💬 互動式 Web Playground**：
   - 在瀏覽器中透過即時 SSE 串流測試大學支援的任何模型。
   - **🧠 DeepSeek 與多標籤思維鏈手風琴**：支援摺疊展開思考過程，相容 `delta.reasoning_content` 及 `<think>`、`<thought>`、`<thinking>`、`<reasoning>` 等標籤。

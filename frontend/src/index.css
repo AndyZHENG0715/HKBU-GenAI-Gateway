@@ -8,7 +8,17 @@
   }
 }
 
-/* Custom subtle scrollbar */
+/* Standards-compliant scrollbar for Firefox & modern browsers */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+}
+
+.dark * {
+  scrollbar-color: rgba(100, 116, 139, 0.4) transparent;
+}
+
+/* Custom subtle scrollbar for WebKit/Blink (Chrome, Edge, Safari) */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -25,4 +35,23 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(100, 116, 139, 0.6);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.4);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6);
+}
+
+/* Polished text selection matching brand blue */
+::selection {
+  background-color: rgba(30, 64, 175, 0.25);
+  color: inherit;
+}
+
+.dark ::selection {
+  background-color: rgba(59, 130, 246, 0.35);
+  color: inherit;
 }

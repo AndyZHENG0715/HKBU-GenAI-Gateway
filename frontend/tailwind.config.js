@@ -10,6 +10,9 @@ export default {
   theme: {
     extend: {
       colors: {
+        slate: {
+          850: '#131d2e',
+        },
         hkbu: {
           blue: {
             50: '#f0f5fc',

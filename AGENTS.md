@@ -14,12 +14,38 @@ HKBU GenAI Gateway is a lightweight, zero-configuration, OpenAI-compatible proxy
 ### Critical Upstream Constraints
 Do not assume standard OpenAI server behavior from HKBU upstream. Always account for the following live-verified constraints:
 1. **Shared NestJS DTO vs. Provider Gating**: Upstream Swagger schemas declare `tools?: ToolDto[]` across all providers, but Alibaba Cloud Qwen (`qwen3-max`, `qwen-plus`), Google Vertex AI Llama (`llama-4-maverick`), and DeepSeek gate native tool calls. They must be routed through the gateway's prompt-based emulation adapter (`tools.py`).
-2. **Qwen History Dropping**: The upstream HKBU adapter for `qwen-plus` and `qwen3-max` silently drops multi-turn history and only forwards the final user turn. The gateway must inject historical dialogue as a structured JSON transcript inside the final user turn (`_prepare_qwen_messages`).
+2. **Non-Azure History Dropping (Qwen, DeepSeek, Llama)**: The upstream HKBU adapter for non-Azure models (`qwen-plus`, `qwen3-max`, `deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash`, `llama-4-maverick`) silently drops multi-turn history and only forwards the final user turn. The gateway must inject historical dialogue as a structured JSON transcript inside the final user turn (`_prepare_history_transcript`).
 3. **Role Restrictions**: Qwen upstream rejects `developer` roles with HTTP 400. Map `developer` to `system` on the Qwen path.
 4. **Reasoning Parameter Rejection**: Azure OpenAI `o1`, `o3-mini`, `gpt-5`, and `gpt-5-mini` reject custom `temperature`, `top_p`, `presence_penalty`, and `frequency_penalty`. Map `max_tokens` to `max_completion_tokens`.
 5. **Content Type Validation**: Upstream NestJS DTO strictly validates message content shapes; empty strings (`""`) trigger HTTP 400 on certain roles. Use compliant fallbacks (`(success)` for tools, `None` for assistant tool calls, `" "` for user/text).
 
-## 2. Essential Commands
+## 2. Git Discipline & Anti-"Vibe-Coding" Guardrails
+
+To prevent AI agent desynchronizations, accidental code overwrites, or structural regressions during rapid collaborative development:
+
+1. **Pre-Flight Upstream Check (Mandatory)**:
+   Before modifying any files or planning a new feature, every agent MUST inspect git status and check for remote updates:
+   ```bash
+   git fetch origin
+   git status
+   ```
+   If the branch is behind `origin/main`, sync (`git pull` / rebase) before writing any code. Never overwrite remote commits or force-push (`git push -f`).
+
+2. **Dual-Gate Verification Before Commits**:
+   - **Backend Gate**: Run `PYTHONPATH=src pytest`. All tests must pass with 0 failures before committing.
+   - **Frontend Gate**: If modifying `frontend/`, run `cd frontend && npm run build` to ensure clean TypeScript compilation and bundle generation.
+   - **Asset Parity**: Any changes in `frontend/src/` must be compiled and committed together with the regenerated `static/` bundle.
+
+3. **Preserve Upstream Compensations (No Blind Refactoring)**:
+   The gateway contains specialized compensations for upstream HKBU platform quirks (such as transcript history encoding in `_prepare_history_transcript`, empty string replacements `(success)`, tool call emulation, and reasoning parameter stripping). AI agents must NEVER unilaterally "clean up" or remove these mechanisms without verifying against live upstream constraints.
+
+4. **UI Invariants (Zero Native Dialogs)**:
+   Never introduce native browser dialogs (`window.alert`, `window.confirm`, `window.prompt`, or raw unstyled `<select>`). Always use themed in-app modals, inline buttons, or reactive badges matching the design system.
+
+5. **No Destructive Operations**:
+   Never run destructive shell commands (`rm -rf`, `git reset --hard`) on tracked workspace assets without explicit user confirmation.
+
+## 3. Essential Commands
 
 ### Environment Setup
 ```bash
@@ -55,13 +81,13 @@ curl --noproxy '*' -s http://127.0.0.1:8000/healthz
 # Expected: {"status":"ok","version":"<CURRENT_VERSION>"}
 ```
 
-## 3. Architecture & File Ownership
+## 4. Architecture & File Ownership
 
 Do not violate module boundaries. Each module has a strict single responsibility:
 
 | Path | Responsibility | Boundary Rules |
 | :--- | :--- | :--- |
-| `src/hkbu_gateway/app.py` | FastAPI application, route handlers, error handlers, message content normalization (`_sanitize_message_content`), Qwen dialogue history transcript encoding (`_prepare_qwen_messages`), reasoning model parameter sanitization (`o1`/`o3`/`gpt-5`), static asset mounting. | Do not execute raw SQL here. Interacts with `CredentialStore` via app state. Never log user prompt or message content to stdout/console. |
+| `src/hkbu_gateway/app.py` | FastAPI application, route handlers, error handlers, message content normalization (`_sanitize_message_content`), dialogue history transcript encoding (`_prepare_history_transcript`), web fetch proxy (`/api/tools/web_fetch`), reasoning parameter sanitization (`o1`/`o3`/`gpt-5`), static asset mounting. | Do not execute raw SQL here. Interacts with `CredentialStore` via app state. Never log user prompt or message content to stdout/console. |
 | `src/hkbu_gateway/credentials.py` | Encrypted SQLite credential storage (`CredentialStore`). Fernet key generation and persistence (`hkbu_gateway.key`). | Hash gateway keys with SHA-256 before storage. Never store plaintext keys. |
 | `src/hkbu_gateway/registry.py` | Model catalog, capabilities flags, context windows, models.dev / WorkBuddy / OpenCode metadata formatting. | All model additions must declare `supports_tool_call`, `supports_reasoning`, `supports_vision`, and `native_tool_call`. |
 | `src/hkbu_gateway/providers.py` | Upstream HTTP client, upstream path resolution, streaming response processing, coordinated `ThinkStreamFilter` and `tool_stream_filter`. | Handles upstream SSE parsing, error mapping, and guarantees initial chunk and final `finish_reason: "stop"` frames. |
@@ -70,7 +96,7 @@ Do not violate module boundaries. Each module has a strict single responsibility
 | `src/hkbu_gateway/config.py` | Environment variable resolution and default configuration dataclasses. | Do not hardcode runtime secrets. |
 | `frontend/src/` | Single-page developer portal and interactive chat playground. | Production output must go to `static/` with relative asset links (`base: './'`). |
 
-## 4. Non-Negotiable Coding Invariants
+## 5. Non-Negotiable Coding Invariants
 
 1. **Python 3.9+ Compatibility**:
    - `from __future__ import annotations` MUST be the first statement in every Python file under `src/hkbu_gateway/`.
@@ -101,7 +127,7 @@ Do not violate module boundaries. Each module has a strict single responsibility
    - Follow Conventional Commits: `<type>[optional scope]: <description>`.
    - Types: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`, `build`, `ci`.
 
-## 5. Deployment Artifacts
+## 6. Deployment Artifacts
 
 The repository maintains zero-configuration deployment artifacts:
 - `start.sh`: Unix entrypoint with automated environment provisioning via `uv` if system Python is `<3.9`.
@@ -111,7 +137,7 @@ The repository maintains zero-configuration deployment artifacts:
 - `docker-compose.yml`: Binds `./data` to `/app/data` for persistent SQLite credentials and Fernet keys.
 - `Procfile`: PaaS entrypoint for Railway and Render.
 
-## 6. Token Budget & Probing Discipline for Agents
+## 7. Token Budget & Probing Discipline for Agents
 
 When verifying models or writing diagnostic tests:
 - **Conserve University Quotas**: HKBU platform accounts have shared rate and token limits. Never execute unconstrained generation probes. Always set `max_tokens: 10` or `16` for connectivity checks.

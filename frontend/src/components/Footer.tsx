@@ -1,22 +1,14 @@
 import React, { useState } from 'react';
-import { ExternalLink, ShieldCheck, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { ExternalLink, ShieldCheck, History, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import pkg from '../../package.json';
 import changelogRaw from '../../../CHANGELOG.md?raw';
 
 export const Footer: React.FC = () => {
-  const [showChangelog, setShowChangelog] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('hkbu_changelog_open') === '1';
-    }
-    return false;
-  });
+  const [showChangelog, setShowChangelog] = useState<boolean>(false);
 
   const toggleChangelog = () => {
-    setShowChangelog((prev) => {
-      localStorage.setItem('hkbu_changelog_open', prev ? '0' : '1');
-      return !prev;
-    });
+    setShowChangelog((prev) => !prev);
   };
 
   return (
@@ -72,8 +64,27 @@ export const Footer: React.FC = () => {
           </button>
 
           {showChangelog && (
-            <div className="mt-3 max-h-96 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 sm:p-6 text-left shadow-inner animate-fadeIn">
-              <MarkdownRenderer content={changelogRaw} />
+            <div className="mt-3 relative rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-inner overflow-hidden animate-fadeIn">
+              <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2.5 bg-slate-50/95 dark:bg-slate-850/95 backdrop-blur-xs border-b border-slate-200 dark:border-slate-700/80">
+                <div className="flex items-center space-x-2">
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">Changelog</span>
+                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                    Release Notes
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowChangelog(false)}
+                  className="flex items-center space-x-1 px-2 py-0.5 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800/80 rounded transition-colors cursor-pointer"
+                  title="Close changelog"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Close</span>
+                </button>
+              </div>
+              <div className="max-h-96 overflow-y-auto p-4 sm:p-6 text-left">
+                <MarkdownRenderer content={changelogRaw} />
+              </div>
             </div>
           )}
         </div>

@@ -5,6 +5,48 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Server-Side Web Fetch Proxy (`src/hkbu_gateway/app.py`, `companion/hkbu_genai_companion.py`)**:
+  - Implemented `POST /api/tools/web_fetch` to bypass browser CORS restrictions when agents fetch public web pages. Includes automated User-Agent headers, redirect following, 15s timeout, HTML text extraction (`_clean_html_text`), and cloud metadata SSRF protection.
+  - Added `POST /api/web_fetch` endpoint to the companion daemon.
+  - Implemented 3-tier fallback in frontend (`webFetch.ts`): Gateway backend proxy -> Companion daemon -> Browser direct.
+- **Custom Styled Model Dropdown (`frontend/src/components/ModelDropdown.tsx`)**:
+  - Replaced standard native HTML select with a custom styled dropdown matching the application palette, featuring real-time search filtering, provider badges, category pills, dark/light theme support, and click-outside/Escape dismiss.
+
+### Fixed
+- **Multi-Turn History Preservation for Non-Azure Models (`src/hkbu_gateway/app.py`, `frontend/src/components/Playground.tsx`)**:
+  - Generalized `_prepare_qwen_messages` to `_prepare_history_transcript`, resolving upstream history dropping across DeepSeek (`deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash`), Qwen (`qwen3-max`, `qwen-plus`), and Llama (`llama-4-maverick`).
+  - Refined `historyCandidates` filtering in `Playground.tsx` so assistant turns with executed tools are preserved in history even if interim text content was empty.
+- **Playground Tool Call Permanent Retention (`frontend/src/components/Playground.tsx`, `ToolCallCard.tsx`)**:
+  - Preserved accumulated tool calls and thinking outputs on assistant messages upon stream completion, preventing cards from disappearing after execution.
+  - Added `stepIndex` tracking to `ToolCallExecution` and rendered `Step X` badges on cards.
+- **Playground Layout & Theme Polish**:
+  - Mathematically centered the `[ 💬 Chat | ⚡ Agent ]` switcher in the top bar (`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2`), preventing displacement when local companion buttons appear.
+  - Separated hero inspiration suggestion cards between Chat Mode and Agent Mode.
+  - Standardized theme consistency with `slate-850` and eliminated Chinese/English language mixing with 100% natural English UI.
+
+## [2.0.0] - 2026-09-30
+
+### Added
+
+- **Agentic Playground Engine (`frontend/src/lib/agent/`, `frontend/src/components/Playground.tsx`)**:
+  - Evolved the interactive playground into an autonomous **Agentic Playground** referencing the minimalist harness architecture of Pi agent (`pi-agent-core`) and OpenClaw ("小龙虾").
+  - Implemented an event-driven agent loop (`loop.ts`) supporting autonomous multi-step reasoning, streaming tool call detection, local execution dispatch, observation feedback, and iteration cycle guard (max 10 iterations) with instant cancellation.
+- **Client-Side Compute Offloading (Tier 1: Zero-Install Browser Sandboxes)**:
+  - **In-Browser Python via WebAssembly (Pyodide)**: Runs full CPython 3.12 with NumPy, Pandas, and Matplotlib directly in the user's browser CPU/memory. Intercepts `plt.show()` and exports figures as inline Canvas/PNG charts into the conversation with **zero server load on Railway**.
+  - **Local Workspace Access (Browser File System Access API)**: Enables users to select a local folder on their computer via native browser prompt; the agent can inspect file trees, read code, and edit files directly on the local disk without installing any software.
+  - **Web Fetch & Calculator Tools**: Safe client-side HTML/JSON extraction and mathematical expression evaluation.
+- **Tier 2 Local Companion Bridge (`companion/hkbu_genai_companion.py`, `localCompanion.ts`)**:
+  - Zero-dependency standalone Python companion daemon running on `127.0.0.1:9001` with strict loopback binding and permissive CORS.
+  - Unlocks native host shell execution (`bash`), local git operations, and full workspace filesystem manipulation for power users.
+  - Added companion unit test suite (`tests/test_companion.py`, 9 tests passing).
+- **Playground UI & UX Enhancements (`ToolCallCard.tsx`)**:
+  - Added Mode Switcher toggle: **💬 Chat Mode** vs **⚡ Agent Mode**.
+  - Built interactive `ToolCallCard` with collapsible arguments, live execution spinner, duration timer, console logs, and Matplotlib plot rendering.
+  - Added active tools capabilities bar with local directory selector and real-time step progress indicator.
+
 ## [1.3.3] - 2026-09-30
 
 ### Fixed

@@ -82,19 +82,35 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
+export interface ToolCallItem {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | null;
+  name?: string;
+  tool_call_id?: string;
+  tool_calls?: ToolCallItem[];
 }
 
 export interface StreamChunk {
   content?: string;
   reasoning_content?: string;
+  tool_calls?: ToolCallItem[];
+  finish_reason?: string | null;
 }
 
 export interface StreamChatOptions {
   model: string;
   messages: ChatMessage[];
+  tools?: any[];
+  tool_choice?: any;
   gatewayKey: string;
   onChunk: (chunk: StreamChunk) => void;
   onError: (err: Error) => void;
@@ -105,6 +121,8 @@ export interface StreamChatOptions {
 export async function streamChatCompletion({
   model,
   messages,
+  tools,
+  tool_choice,
   gatewayKey,
   onChunk,
   onError,
@@ -113,17 +131,25 @@ export async function streamChatCompletion({
 }: StreamChatOptions): Promise<void> {
   const root = getApiRoot();
   try {
+    const requestBody: Record<string, any> = {
+      model,
+      messages,
+      stream: true,
+    };
+    if (tools && tools.length > 0) {
+      requestBody.tools = tools;
+      if (tool_choice) {
+        requestBody.tool_choice = tool_choice;
+      }
+    }
+
     const response = await fetch(`${root}/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${gatewayKey.trim()}`,
       },
-      body: JSON.stringify({
-        model,
-        messages,
-        stream: true,
-      }),
+      body: JSON.stringify(requestBody),
       signal,
     });
 
@@ -140,6 +166,7 @@ export async function streamChatCompletion({
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let buffer = '';
+    const accumulatedToolCalls: ToolCallItem[] = [];
 
     while (true) {
       const { done, value } = await reader.read();
@@ -166,12 +193,40 @@ export async function streamChatCompletion({
               onError(new Error(errMsg));
               return;
             }
-            const delta = parsed.choices?.[0]?.delta;
+            const choice = parsed.choices?.[0];
+            const delta = choice?.delta;
+            const finishReason = choice?.finish_reason;
             if (delta) {
               const content = delta.content || '';
               const reasoning = delta.reasoning_content || delta.reasoning || '';
-              if (content || reasoning) {
-                onChunk({ content, reasoning_content: reasoning });
+
+              if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
+                for (const tc of delta.tool_calls) {
+                  const idx = tc.index ?? 0;
+                  if (!accumulatedToolCalls[idx]) {
+                    accumulatedToolCalls[idx] = {
+                      id: tc.id || `call_${Date.now()}_${idx}`,
+                      type: 'function',
+                      function: {
+                        name: tc.function?.name || '',
+                        arguments: tc.function?.arguments || '',
+                      },
+                    };
+                  } else {
+                    if (tc.id) accumulatedToolCalls[idx].id = tc.id;
+                    if (tc.function?.name) accumulatedToolCalls[idx].function.name += tc.function.name;
+                    if (tc.function?.arguments) accumulatedToolCalls[idx].function.arguments += tc.function.arguments;
+                  }
+                }
+              }
+
+              if (content || reasoning || delta.tool_calls || finishReason) {
+                onChunk({
+                  content,
+                  reasoning_content: reasoning,
+                  tool_calls: accumulatedToolCalls.length > 0 ? [...accumulatedToolCalls] : undefined,
+                  finish_reason: finishReason,
+                });
               }
             }
           } catch (e: any) {
