@@ -30,6 +30,14 @@ REASONING_TAG_PAIRS = [
     ("<thought>", "</thought>"),
     ("<thinking>", "</thinking>"),
     ("<reasoning>", "</reasoning>"),
+    ("<Think>", "</Think>"),
+    ("<Thought>", "</Thought>"),
+    ("<Thinking>", "</Thinking>"),
+    ("<Reasoning>", "</Reasoning>"),
+    ("<THINK>", "</THINK>"),
+    ("<THOUGHT>", "</THOUGHT>"),
+    ("<THINKING>", "</THINKING>"),
+    ("<REASONING>", "</REASONING>"),
 ]
 
 
@@ -194,6 +202,7 @@ class HKBUProvider:
         has_emitted_role = False
         has_emitted_finish = False
         has_emitted_choices = False
+        has_emitted_content = False
 
         try:
             async with self.client.stream(
@@ -308,9 +317,11 @@ class HKBUProvider:
                                         for chunk_bytes in tool_stream_filter.process_chunk(synthetic_line):
                                             yield chunk_bytes
                                             has_emitted_choices = True
+                                            has_emitted_content = True
                                     else:
                                         yield f"data: {json.dumps(c)}\n\n".encode()
                                         has_emitted_choices = True
+                                        has_emitted_content = True
 
                         if emulate and tool_stream_filter:
                             for chunk_bytes in tool_stream_filter.flush_done():
@@ -326,9 +337,14 @@ class HKBUProvider:
                                     "model": model,
                                 }
                                 c = dict(fallback_template)
+                                delta_terminal: dict[str, Any] = {}
+                                if not has_emitted_choices:
+                                    delta_terminal = {"role": "assistant", "content": ""}
+                                elif not has_emitted_content:
+                                    delta_terminal = {"content": ""}
                                 c["choices"] = [{
                                     "index": 0,
-                                    "delta": {} if has_emitted_choices else {"role": "assistant", "content": ""},
+                                    "delta": delta_terminal,
                                     "finish_reason": "stop",
                                 }]
                                 yield f"data: {json.dumps(c)}\n\n".encode()
@@ -417,9 +433,11 @@ class HKBUProvider:
                                             for chunk_bytes in tool_stream_filter.process_chunk(synthetic_line):
                                                 yield chunk_bytes
                                                 has_emitted_choices = True
+                                                has_emitted_content = True
                                         else:
                                             yield f"{synthetic_line}\n\n".encode()
                                             has_emitted_choices = True
+                                            has_emitted_content = True
                                 continue
 
                             # Other non-text chunk with choices (role, finish_reason, tool_calls, native reasoning)

@@ -127,7 +127,7 @@ export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
       maxOutputTokens: 65536,
       supportsToolCall: true,
       supportsImages: false,
-      supportsReasoning: false,
+      supportsReasoning: true,
     },
     {
       id: 'qwen-plus',
@@ -137,7 +137,7 @@ export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
       maxOutputTokens: 8192,
       supportsToolCall: true,
       supportsImages: false,
-      supportsReasoning: false,
+      supportsReasoning: true,
     },
     {
       id: 'llama-4-maverick',

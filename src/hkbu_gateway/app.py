@@ -469,6 +469,32 @@ def _prepare_history_transcript(messages: list[dict[str, Any]]) -> list[dict[str
 _prepare_qwen_messages = _prepare_history_transcript
 
 
+QWEN_REASONING_SYSTEM_INSTRUCTION = (
+    "You MUST think and deliberate step-by-step inside a <think>...</think> block "
+    "before providing your final answer outside of it."
+)
+
+
+def is_reasoning_requested(payload: dict[str, Any]) -> bool:
+    """Detect if client explicitly requested reasoning/thinking mode."""
+    re_effort = payload.get("reasoning_effort")
+    if isinstance(re_effort, str) and re_effort.lower() not in ("none", "off", "disabled", "false", "0"):
+        return True
+    if payload.get("enable_thinking") is True:
+        return True
+    if payload.get("reasoning") is True:
+        return True
+    thinking = payload.get("thinking")
+    if isinstance(thinking, dict) and thinking.get("type") not in ("disabled", "off", "none", False):
+        return True
+    if thinking is True:
+        return True
+    extra_body = payload.get("extra_body")
+    if isinstance(extra_body, dict):
+        return is_reasoning_requested(extra_body)
+    return False
+
+
 def upstream_payload(request: BaseModel, model_id: str | None = None) -> dict[str, Any]:
     payload = request.model_dump(exclude_none=True)
     payload.pop("model", None)
@@ -481,6 +507,20 @@ def upstream_payload(request: BaseModel, model_id: str | None = None) -> dict[st
     if model_id:
         model = find_model(model_id)
         mid = model_id.lower()
+        is_qwen = (model and model.provider == "qwen") or "qwen" in mid
+        if is_qwen and is_reasoning_requested(payload):
+            # Clean up Azure-specific reasoning parameter
+            payload.pop("reasoning_effort", None)
+            if "extra_body" in payload and isinstance(payload["extra_body"], dict):
+                payload["extra_body"].pop("reasoning_effort", None)
+            # Inject reasoning prompt if not already present in dialogue
+            messages = payload.get("messages", [])
+            has_think_instruction = any(
+                "<think>" in str(m.get("content", "")) for m in messages if isinstance(m, dict)
+            )
+            if not has_think_instruction:
+                messages.insert(0, {"role": "system", "content": QWEN_REASONING_SYSTEM_INSTRUCTION})
+
         is_history_dropping_model = (
             (model and model.provider in ("qwen", "deepseek", "llama"))
             or (model and not model.native_tool_call)
@@ -542,7 +582,14 @@ async def chat_completions(
                             pre, rest = content.split(open_tag, 1)
                             think_body, post = rest.split(close_tag, 1)
                             msg["reasoning_content"] = think_body.strip()
-                            msg["content"] = (pre + post.lstrip("\n")).strip()
+                            clean_content = (pre + post.lstrip("\n")).strip()
+                            msg["content"] = clean_content if clean_content else " "
+                            break
+                        elif open_tag in content:
+                            pre, rest = content.split(open_tag, 1)
+                            msg["reasoning_content"] = rest.strip()
+                            clean_content = pre.strip()
+                            msg["content"] = clean_content if clean_content else " "
                             break
         return JSONResponse(content=data)
     except (UpstreamError, httpx.HTTPError) as exc:

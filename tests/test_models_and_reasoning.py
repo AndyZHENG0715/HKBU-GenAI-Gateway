@@ -41,11 +41,14 @@ def test_models_endpoints_without_auth(client):
         assert gpt["supportsVision"] is True
         assert gpt["contextWindow"] == 1_047_576
 
-        # Check Qwen capabilities (tool calling supported via emulation)
+        # Check Qwen capabilities (tool calling supported via emulation, reasoning supported)
         qwen = next(m for m in data["data"] if m["id"] == "qwen3-max")
         assert qwen["supportsToolCall"] is True
+        assert qwen["supportsReasoning"] is True
         assert qwen["tool_call"] is True
+        assert qwen["reasoning"] is True
         assert qwen["capabilities"]["function_calling"] is True
+        assert qwen["capabilities"]["reasoning"] is True
         assert qwen["tool_call_emulated"] is True
         assert qwen["native_tool_call"] is False
 
@@ -108,4 +111,79 @@ def test_litellm_model_info(client):
         assert ds["model_info"]["supports_function_calling"] is True
         assert ds["model_info"]["supports_reasoning"] is True
         assert ds["model_info"]["max_input_tokens"] == 1_000_000
+        qwen = next(m for m in data["data"] if m["model_name"] == "qwen3-max")
+        assert qwen["model_info"]["supports_reasoning"] is True
+
+
+def test_is_reasoning_requested_detection():
+    from hkbu_gateway.app import is_reasoning_requested
+
+    assert is_reasoning_requested({"reasoning_effort": "medium"}) is True
+    assert is_reasoning_requested({"reasoning_effort": "high"}) is True
+    assert is_reasoning_requested({"reasoning_effort": "none"}) is False
+    assert is_reasoning_requested({"enable_thinking": True}) is True
+    assert is_reasoning_requested({"enable_thinking": False}) is False
+    assert is_reasoning_requested({"reasoning": True}) is True
+    assert is_reasoning_requested({"thinking": {"type": "enabled"}}) is True
+    assert is_reasoning_requested({"thinking": {"type": "disabled"}}) is False
+    assert is_reasoning_requested({"extra_body": {"enable_thinking": True}}) is True
+    assert is_reasoning_requested({"extra_body": {"reasoning_effort": "low"}}) is True
+    assert is_reasoning_requested({}) is False
+
+
+def test_qwen_reasoning_prompt_injection():
+    from hkbu_gateway.app import upstream_payload, QWEN_REASONING_SYSTEM_INSTRUCTION
+    from hkbu_gateway.protocol import ChatCompletionRequest
+
+    # Request with reasoning_effort
+    req = ChatCompletionRequest(
+        model="qwen3-max",
+        messages=[{"role": "user", "content": "9.11和9.9谁大？"}],
+        reasoning_effort="high",
+    )
+    payload = upstream_payload(req, "qwen3-max")
+    assert "reasoning_effort" not in payload
+    # Check that system instruction was injected
+    assert any(QWEN_REASONING_SYSTEM_INSTRUCTION in str(m.get("content")) for m in payload["messages"])
+
+    # Request without reasoning should NOT inject
+    req_no_reasoning = ChatCompletionRequest(
+        model="qwen3-max",
+        messages=[{"role": "user", "content": "hello"}],
+    )
+    payload_no_reasoning = upstream_payload(req_no_reasoning, "qwen3-max")
+    assert not any(QWEN_REASONING_SYSTEM_INSTRUCTION in str(m.get("content")) for m in payload_no_reasoning["messages"])
+
+    # If <think> is already in messages, do not double inject
+    req_already_has = ChatCompletionRequest(
+        model="qwen3-max",
+        messages=[
+            {"role": "system", "content": "Please output in <think> tags."},
+            {"role": "user", "content": "hello"},
+        ],
+        reasoning_effort="medium",
+    )
+    payload_already_has = upstream_payload(req_already_has, "qwen3-max")
+    assert not any(QWEN_REASONING_SYSTEM_INSTRUCTION == m.get("content") for m in payload_already_has["messages"])
+
+
+def test_think_stream_filter_case_and_unclosed():
+    tsf = ThinkStreamFilter()
+    events = []
+    events.extend(tsf.process("<Think>Capitalized think</Think>Actual content"))
+    events.extend(tsf.flush())
+
+    reasoning = "".join(text for kind, text in events if kind == "reasoning_content")
+    content = "".join(text for kind, text in events if kind == "content")
+    assert reasoning == "Capitalized think"
+    assert content == "Actual content"
+
+    # Unclosed tag at stream end flushes as reasoning_content
+    tsf2 = ThinkStreamFilter()
+    events2 = []
+    events2.extend(tsf2.process("<think>Unclosed thought without closing tag"))
+    events2.extend(tsf2.flush())
+    reasoning2 = "".join(text for kind, text in events2 if kind == "reasoning_content")
+    assert reasoning2 == "Unclosed thought without closing tag"
+
 
