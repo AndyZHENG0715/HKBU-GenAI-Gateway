@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ExternalLink, ShieldCheck, History, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { GatewayLogo } from './GatewayLogo';
 import pkg from '../../package.json';
 import changelogRaw from '../../../CHANGELOG.md?raw';
 
@@ -16,9 +17,7 @@ export const Footer: React.FC = () => {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-2">
-            <div className="w-5 h-5 rounded-md bg-hkbu-blue-700 text-white flex items-center justify-center font-bold text-[10px] font-mono">
-              BU
-            </div>
+            <GatewayLogo size="sm" className="w-5 h-5 !rounded-md" />
             <span className="font-semibold text-slate-700 dark:text-slate-300">
               HKBU GenAI Gateway
             </span>

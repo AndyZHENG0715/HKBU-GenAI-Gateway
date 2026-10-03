@@ -1,5 +1,6 @@
 import React from 'react';
 import { Sparkles, Sun, Moon, BookOpen, MessageSquare, KeyRound } from 'lucide-react';
+import { GatewayLogo } from './GatewayLogo';
 
 interface HeaderProps {
   darkMode: boolean;
@@ -24,10 +25,8 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between h-16 sm:h-20">
           {/* Brand Logo & Name */}
           <div className="flex items-center space-x-3 sm:space-x-4 cursor-pointer" onClick={() => setActiveTab('setup')}>
-            {/* HKBU Emblem Badge */}
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-hkbu-blue-700 dark:bg-hkbu-blue-800 flex items-center justify-center shadow-md shadow-hkbu-blue-900/20 ring-2 ring-hkbu-gold-500/80">
-              <span className="text-white font-black text-sm tracking-wider font-mono">BU</span>
-            </div>
+            {/* HKBU Gateway Emblem Badge */}
+            <GatewayLogo size="md" className="ring-2 ring-hkbu-gold-500/80 sm:w-11 sm:h-11" />
             <div>
               <div className="flex items-center space-x-2">
                 <span className="font-bold text-base sm:text-lg tracking-tight text-hkbu-blue-700 dark:text-hkbu-blue-300">
