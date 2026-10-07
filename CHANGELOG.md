@@ -8,6 +8,9 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Local username/password accounts with confirmation, recovery codes, owned key management and legacy-key claiming; automatic SQLite migration.
+- Local operator command for single-use 15-minute recovery codes.
+- Companion per-start tokens and exact HTTP/WebSocket origin checks.
 - **Server-Side Web Fetch Proxy (`src/hkbu_gateway/app.py`, `companion/hkbu_genai_companion.py`)**:
   - Implemented `POST /api/tools/web_fetch` to bypass browser CORS restrictions when agents fetch public web pages. Includes automated User-Agent headers, redirect following, 15s timeout, HTML text extraction (`_clean_html_text`), and cloud metadata SSRF protection.
   - Added `POST /api/web_fetch` endpoint to the companion daemon.
@@ -16,6 +19,10 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - Replaced standard native HTML select with a custom styled dropdown matching the application palette, featuring real-time search filtering, provider badges, category pills, dark/light theme support, and click-outside/Escape dismiss.
 
 ### Fixed
+- Preserve native tool calls, reasoning and finish reasons in JSON-to-SSE conversion.
+- Authenticate web fetch, pin public IPs on every redirect, limit response size, and prevent policy-denial fallback bypasses.
+- Restore Python 3.9/3.10 UTC compatibility and support all authentication headers for revocation.
+- Preserve invalid encryption key files instead of replacing them.
 - **Multi-Turn History Preservation for Non-Azure Models (`src/hkbu_gateway/app.py`, `frontend/src/components/Playground.tsx`)**:
   - Generalized `_prepare_qwen_messages` to `_prepare_history_transcript`, resolving upstream history dropping across DeepSeek (`deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash`), Qwen (`qwen3-max`, `qwen-plus`), and Llama (`llama-4-maverick`).
   - Refined `historyCandidates` filtering in `Playground.tsx` so assistant turns with executed tools are preserved in history even if interim text content was empty.

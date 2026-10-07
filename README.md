@@ -208,3 +208,11 @@ Use the actual configured `HKBU_DATABASE_PATH` (the default is `hkbu_gateway.db`
 Session cookies are HttpOnly, SameSite=Strict, expire after seven days, and use Secure on HTTPS. Deploy publicly behind HTTPS; configure the reverse proxy to forward the original scheme and host and configure Uvicorn to trust only that proxy's forwarded headers. Local HTTP works without extra configuration. Do not expose the HTTP development server publicly. Mutating account and key-management requests must carry the matching Origin and X-CSRF-Token from `/api/account/session`.
 
 The account portal lists only owned key names, prefixes, dates, and status. Full gateway keys appear once when created. Older anonymous keys remain valid for inference; an account can claim one only by presenting the full existing key. Existing inference clients continue using Bearer/API-key authentication and never need a browser session.
+
+### Updating an existing deployment
+
+Back up the live SQLite database using SQLite's backup facility and preserve its Fernet `.key` file (or configured encryption key). Stop the gateway before a plain filesystem database copy; copying a running WAL database alone is not a consistent backup. Update source and bundled `static/` assets together, then restart through the existing deployment manager. Keep `HKBU_DATABASE_PATH` and the encryption key unchanged. Startup migrates the database automatically.
+
+New key creation requires a local account. Existing inference keys remain valid and can be claimed by their holders. Companion users must restart the updated companion and pair using its new token. Web fetch requires gateway authentication and allows only public internet destinations.
+
+Verify `/healthz`, registration/sign-in and owned-key management after restarting. GitHub pushes do not update ECS unless a separate deployment integration is configured.
