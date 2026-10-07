@@ -4,6 +4,19 @@ let companionPort = 9001;
 let isCompanionConnected = false;
 let companionCwd = '';
 
+export function getCompanionToken(): string {
+  return sessionStorage.getItem('hkbu_companion_token') || '';
+}
+
+export function setCompanionToken(token: string): void {
+  sessionStorage.setItem('hkbu_companion_token', token.trim());
+  isCompanionConnected = false;
+}
+
+export function companionHeaders(): Record<string, string> {
+  return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getCompanionToken() };
+}
+
 export function getCompanionState(): {
   connected: boolean;
   port: number;
@@ -24,6 +37,7 @@ export async function probeCompanion(
     const timeout = setTimeout(() => controller.abort(), 2000);
     const res = await fetch(`http://127.0.0.1:${port}/healthz`, {
       signal: controller.signal,
+      headers: companionHeaders(),
     });
     clearTimeout(timeout);
 
@@ -72,7 +86,7 @@ export const companionBashTool: AgentTool = {
     try {
       const res = await fetch(`http://127.0.0.1:${companionPort}/api/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: companionHeaders(),
         body: JSON.stringify({
           command,
           cwd: args.cwd || undefined,
@@ -131,7 +145,7 @@ export const companionReadFileTool: AgentTool = {
     try {
       const res = await fetch(`http://127.0.0.1:${companionPort}/api/read_file`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: companionHeaders(),
         body: JSON.stringify({ path: filePath }),
       });
       const data = await res.json();
@@ -177,7 +191,7 @@ export const companionWriteFileTool: AgentTool = {
     try {
       const res = await fetch(`http://127.0.0.1:${companionPort}/api/write_file`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: companionHeaders(),
         body: JSON.stringify({ path: filePath, content }),
       });
       const data = await res.json();

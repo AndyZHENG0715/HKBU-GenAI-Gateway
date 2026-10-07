@@ -258,21 +258,34 @@ class HKBUProvider:
                             yield b"data: [DONE]\n\n"
                             return
                         if "choices" in data and isinstance(data["choices"], list) and len(data["choices"]) > 0:
-                            c_text = data["choices"][0].get("message", {}).get("content") or ""
+                            choice = data["choices"][0]
+                            message = choice.get("message", {})
+                            delta = {"role": "assistant", "content": message.get("content") or ""}
+                            for field in ("reasoning_content", "reasoning"):
+                                if message.get(field) is not None:
+                                    delta[field] = message[field]
+                            if message.get("tool_calls"):
+                                delta["tool_calls"] = [
+                                    {**call, "index": index}
+                                    for index, call in enumerate(message["tool_calls"])
+                                ]
+                            finish_reason = choice.get("finish_reason") or "stop"
+                            if message.get("tool_calls") and finish_reason in ("stop", "STOP"):
+                                finish_reason = "tool_calls"
                             stream_id = data.get("id", f"chatcmpl-{uuid.uuid4().hex[:24]}")
                             chunk1 = {
                                 "id": stream_id,
                                 "object": "chat.completion.chunk",
                                 "created": data.get("created", int(time.time())),
                                 "model": model,
-                                "choices": [{"index": 0, "delta": {"role": "assistant", "content": c_text}, "finish_reason": None}],
+                                "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
                             }
                             chunk2 = {
                                 "id": stream_id,
                                 "object": "chat.completion.chunk",
                                 "created": data.get("created", int(time.time())),
                                 "model": model,
-                                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                                "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
                             }
                             if tool_stream_filter:
                                 for chunk in (chunk1, chunk2):

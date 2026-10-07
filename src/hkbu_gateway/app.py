@@ -24,9 +24,11 @@ from pydantic import BaseModel, Field
 from . import __version__
 from .config import Settings
 from .credentials import Credential, CredentialStore
+from .accounts import AccountStore, require_account, router as account_router
 from .protocol import ChatCompletionRequest, EmbeddingRequest, openai_error
 from .providers import HKBUProvider, UpstreamError, REASONING_TAG_PAIRS
 from .registry import MODELS, find_model
+from .webfetch import FetchPolicyError, fetch_public_url
 
 
 @asynccontextmanager
@@ -38,11 +40,14 @@ async def lifespan(app: FastAPI):
     app.state.credentials = CredentialStore(
         settings.database_path, settings.encryption_key
     )
+    app.state.accounts = AccountStore(app.state.credentials)
     yield
     await app.state.client.aclose()
 
 
 app = FastAPI(title="HKBU GenAI Gateway", version=__version__, lifespan=lifespan)
+
+app.include_router(account_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -115,12 +120,14 @@ async def healthz() -> dict[str, str]:
 
 class CredentialRequest(BaseModel):
     hkbu_api_key: str = Field(min_length=1, max_length=512)
+    name: str = Field(default="", max_length=80)
 
 
 @app.post("/api/credentials")
 async def create_credential(
     request: CredentialRequest, http_request: Request
 ) -> dict[str, Any]:
+    owner = require_account(http_request)
     store: CredentialStore | None = http_request.app.state.credentials
     if not store:
         raise HTTPException(status_code=503, detail="Credential management is not configured")
@@ -179,7 +186,7 @@ async def create_credential(
             detail=f"HKBU Platform error ({last_error_detail}). Please verify your key has active quota on genai.hkbu.edu.hk.",
         )
 
-    credential = store.create(request.hkbu_api_key)
+    credential = store.create(request.hkbu_api_key, owner["id"], request.name)
     return {
         "id": credential.key_id,
         "api_key": credential.gateway_key,
@@ -195,7 +202,9 @@ async def revoke_credential(
     store: CredentialStore | None = request.app.state.credentials
     if not store or credential.key_id == 0:
         raise HTTPException(status_code=400, detail="Only managed credentials can be revoked")
-    revoked = store.revoke(_token(request.headers.get("authorization")))
+    raw_token = (request.headers.get("authorization") or request.headers.get("api-key")
+                 or request.headers.get("x-api-key"))
+    revoked = store.revoke(_token(raw_token))
     return {"revoked": revoked}
 
 
@@ -671,79 +680,47 @@ def _clean_html_text(html_content: str) -> str:
 @app.post("/api/tools/web_fetch")
 async def web_fetch(
     request: WebFetchRequest,
-    http_request: Request,
+    credential: Credential = Depends(require_gateway_key),
 ):
-    target_url = request.url.strip()
-    if not (target_url.startswith("http://") or target_url.startswith("https://")):
-        target_url = f"https://{target_url}"
-
-    # Guard against cloud metadata SSRF
-    lower_url = target_url.lower()
-    if "169.254.169.254" in lower_url or "metadata.google" in lower_url:
-        return JSONResponse(
-            status_code=400,
-            content={"error": "Access to cloud metadata endpoints is restricted."},
-        )
-
-    client: httpx.AsyncClient = getattr(http_request.app.state, "client", None)
-    should_close = False
-    if client is None:
-        client = httpx.AsyncClient(timeout=15.0)
-        should_close = True
-
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36 HKBU-GenAI-Gateway"
-        ),
-        "Accept": "text/html,application/xhtml+xml,application/json,text/plain;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
-    }
-
     try:
-        resp = await client.get(target_url, headers=headers, follow_redirects=True, timeout=15.0)
-        content_type = resp.headers.get("content-type", "").lower()
-        raw_text = resp.text
+        result = await asyncio.to_thread(fetch_public_url, request.url)
+        if result.status >= 400:
+            return JSONResponse(content={"error": f"HTTP {result.status} {result.reason}",
+                                         "status": result.status, "url": result.url})
+        cleaned = result.text
+        if "text/html" in result.content_type or "<html" in cleaned[:500].lower():
+            cleaned = _clean_html_text(cleaned)
+        return {"content": cleaned[:20000], "status": result.status, "url": result.url}
+    except FetchPolicyError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+    except (TimeoutError, OSError, ValueError, httpx.HTTPError) as exc:
+        return JSONResponse(content={"error": "The URL could not be fetched.", "url": request.url})
 
-        if resp.is_error:
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "error": f"HTTP {resp.status_code} {resp.reason_phrase}",
-                    "status": resp.status_code,
-                    "url": str(resp.url),
-                },
-            )
 
-        if "application/json" in content_type:
-            cleaned = raw_text[:20000]
-        elif "text/html" in content_type or "<html" in raw_text[:500].lower():
-            cleaned = _clean_html_text(raw_text)[:20000]
-        else:
-            cleaned = raw_text[:20000]
+@app.get("/api/credentials")
+def list_credentials(request: Request):
+    user = require_account(request)
+    return request.app.state.credentials.list_owned(user["id"])
 
-        return JSONResponse(
-            content={
-                "content": cleaned,
-                "status": resp.status_code,
-                "url": str(resp.url),
-            }
-        )
-    except httpx.TimeoutException:
-        return JSONResponse(
-            status_code=200,
-            content={"error": "Request timed out after 15 seconds.", "url": target_url},
-        )
-    except Exception as exc:
-        return JSONResponse(
-            status_code=200,
-            content={"error": f"Failed to fetch {target_url}: {str(exc)}", "url": target_url},
-        )
-    finally:
-        if should_close:
-            await client.aclose()
 
+class ClaimRequest(BaseModel):
+    api_key: str = Field(min_length=1, max_length=512)
+
+
+@app.post("/api/credentials/claim")
+def claim_credential(body: ClaimRequest, request: Request):
+    user = require_account(request)
+    if not request.app.state.credentials.claim(user["id"], body.api_key):
+        raise HTTPException(400, "Invalid key or already claimed")
+    return {"claimed": True}
+
+
+@app.delete("/api/credentials/{key_id}")
+def revoke_owned_credential(key_id: int, request: Request):
+    user = require_account(request)
+    if not request.app.state.credentials.revoke_owned(user["id"], key_id):
+        raise HTTPException(404, "Active key not found")
+    return {"revoked": True}
 
 static_dir = Path(__file__).resolve().parents[2] / "static"
 if not static_dir.is_dir():

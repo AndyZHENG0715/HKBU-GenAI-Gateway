@@ -1,4 +1,4 @@
-import { AgentTool, OpenAIToolDefinition, ToolExecutionResult } from '../types';
+import { AgentTool, OpenAIToolDefinition, ToolExecutionResult, ToolExecutionContext } from '../types';
 import { pythonTool } from './python';
 import { listDirectoryTool, readFileTool, writeFileTool } from './browserFs';
 import { webFetchTool } from './webFetch';
@@ -36,7 +36,8 @@ export function formatToOpenAITools(tools: AgentTool[]): OpenAIToolDefinition[] 
 export async function dispatchToolExecution(
   toolName: string,
   args: Record<string, any>,
-  tools: AgentTool[] = DEFAULT_BROWSER_TOOLS
+  tools: AgentTool[] = DEFAULT_BROWSER_TOOLS,
+  context?: ToolExecutionContext
 ): Promise<ToolExecutionResult> {
   const tool = tools.find((t) => t.name === toolName);
   if (!tool) {
@@ -47,7 +48,7 @@ export async function dispatchToolExecution(
   }
 
   try {
-    return await tool.execute(args);
+    return await tool.execute(args, context);
   } catch (err: any) {
     return {
       output: '',

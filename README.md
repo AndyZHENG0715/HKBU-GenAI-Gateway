@@ -192,3 +192,19 @@ This project strictly follows [Semantic Versioning](https://semver.org/spec/v2.0
 - `refactor(...)`: Code refactoring without behavior change
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md).
+
+### Local accounts and key ownership
+
+The portal automatically creates account/session tables and adds ownership columns to the existing SQLite database. No email service, OAuth configuration, or administrator account is needed. Register with a username and a password of at least 12 characters, entered twice. The account identifies a local gateway user; it does not establish university identity. Creating inference credentials still validates the user's personal HKBU GenAI key.
+
+Save the recovery code displayed at registration (the portal can download it). Only its hash is stored. Resetting a password requires that code, rotates it, and signs out all existing sessions. If both are lost, contact the gateway operator, who must verify the owner's identity through a trusted channel. The operator can issue a single-use code valid for 15 minutes from the server's project directory:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m hkbu_gateway.accounts --database hkbu_gateway.db --username USERNAME
+```
+
+Use the actual configured `HKBU_DATABASE_PATH` (the default is `hkbu_gateway.db`). This requires server filesystem access; there is no public administrator reset endpoint. Give the code privately to the verified owner, who uses the normal recovery form to choose a new password. Issuing it replaces the prior recovery code; completing the reset invalidates all sessions and issues a new recovery code. Keep database backups and the existing Fernet `.key` file together to preserve encrypted university keys.
+
+Session cookies are HttpOnly, SameSite=Strict, expire after seven days, and use Secure on HTTPS. Deploy publicly behind HTTPS; configure the reverse proxy to forward the original scheme and host and configure Uvicorn to trust only that proxy's forwarded headers. Local HTTP works without extra configuration. Do not expose the HTTP development server publicly. Mutating account and key-management requests must carry the matching Origin and X-CSRF-Token from `/api/account/session`.
+
+The account portal lists only owned key names, prefixes, dates, and status. Full gateway keys appear once when created. Older anonymous keys remain valid for inference; an account can claim one only by presenting the full existing key. Existing inference clients continue using Bearer/API-key authentication and never need a browser session.

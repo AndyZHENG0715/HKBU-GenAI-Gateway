@@ -1,5 +1,6 @@
-import { AgentTool, ToolExecutionResult } from '../types';
+import { AgentTool, ToolExecutionResult, ToolExecutionContext } from '../types';
 import { getApiRoot } from '../../api';
+import { companionHeaders } from './localCompanion';
 
 export const webFetchTool: AgentTool = {
   name: 'web_fetch',
@@ -17,7 +18,7 @@ export const webFetchTool: AgentTool = {
     },
     required: ['url'],
   },
-  execute: async (args: Record<string, any>): Promise<ToolExecutionResult> => {
+  execute: async (args: Record<string, any>, context?: ToolExecutionContext): Promise<ToolExecutionResult> => {
     const rawUrl = String(args.url || '').trim();
     if (!rawUrl) return { output: '', error: 'Missing url argument.' };
 
@@ -32,9 +33,13 @@ export const webFetchTool: AgentTool = {
       const apiRoot = getApiRoot();
       const res = await fetch(`${apiRoot}/api/tools/web_fetch`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(context?.gatewayKey ? { Authorization: `Bearer ${context.gatewayKey}` } : {}) },
         body: JSON.stringify({ url: normalizedUrl }),
       });
+      if (!res.ok && [400, 401, 403].includes(res.status)) {
+        const data = await res.json().catch(() => ({}));
+        return { output: '', error: data.error?.message || data.error || 'Web fetch was rejected.' };
+      }
       if (res.ok) {
         const data = await res.json();
         if (data.error) {
@@ -52,7 +57,7 @@ export const webFetchTool: AgentTool = {
     try {
       const res = await fetch('http://127.0.0.1:9001/api/web_fetch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: companionHeaders(),
         body: JSON.stringify({ url: normalizedUrl }),
       });
       if (res.ok) {

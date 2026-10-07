@@ -20,13 +20,17 @@ export interface ToolExecutionResult {
   details?: Record<string, any>;
 }
 
+export interface ToolExecutionContext {
+  gatewayKey: string;
+}
+
 export interface AgentTool {
   name: string;
   displayName: string;
   description: string;
   category: 'code' | 'filesystem' | 'web' | 'system';
   parameters: ToolParametersSchema;
-  execute: (args: Record<string, any>) => Promise<ToolExecutionResult>;
+  execute: (args: Record<string, any>, context?: ToolExecutionContext) => Promise<ToolExecutionResult>;
   isDestructive?: boolean;
 }
 

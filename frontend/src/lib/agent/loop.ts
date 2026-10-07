@@ -160,7 +160,7 @@ export async function runAgentLoop({
         tc.startedAt = Date.now();
         onToolStart?.(currentIteration, tc);
 
-        const execResult = await dispatchToolExecution(tc.toolName, tc.args, tools);
+        const execResult = await dispatchToolExecution(tc.toolName, tc.args, tools, { gatewayKey });
         tc.result = execResult;
         tc.finishedAt = Date.now();
         tc.status = execResult.error ? 'error' : 'success';

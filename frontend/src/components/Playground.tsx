@@ -35,7 +35,7 @@ import { ModelDropdown } from './ModelDropdown';
 import { ToolCallExecution } from '../lib/agent/types';
 import { runAgentLoop } from '../lib/agent/loop';
 import { getAllAvailableTools } from '../lib/agent/tools/registry';
-import { probeCompanion } from '../lib/agent/tools/localCompanion';
+import { probeCompanion, getCompanionToken, setCompanionToken } from '../lib/agent/tools/localCompanion';
 import {
   getWorkspaceDirectoryName,
   promptSelectDirectory,
@@ -122,6 +122,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
   const [agentProgress, setAgentProgress] = useState<string | null>(null);
   const [workspaceDir, setWorkspaceDir] = useState<string>(() => getWorkspaceDirectoryName());
   const [companionConnected, setCompanionConnected] = useState<boolean>(false);
+  const [pairingToken, setPairingToken] = useState(() => getCompanionToken());
   const [showHelperModal, setShowHelperModal] = useState<boolean>(false);
   const [probeStatus, setProbeStatus] = useState<'idle' | 'probing' | 'connected' | 'failed'>('idle');
   const [confirmClearAll, setConfirmClearAll] = useState<boolean>(false);
@@ -1553,6 +1554,13 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                 Download the lightweight companion daemon (pure Python standard library, zero pip packages required) and run it locally:
               </p>
 
+              <label className="block text-xs text-slate-600 dark:text-slate-300">
+                Pairing token from the companion terminal (required after each restart)
+                <input type="password" autoComplete="off" value={pairingToken}
+                  onChange={(event) => { setPairingToken(event.target.value); setCompanionToken(event.target.value); setCompanionConnected(false); }}
+                  placeholder="Paste pairing token"
+                  className="mt-2 w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 p-2" />
+              </label>
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <a
                   href="/api/companion/download"
@@ -1592,7 +1600,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
               {probeStatus === 'failed' && (
                 <div className="flex items-center space-x-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs animate-fadeIn">
                   <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                  <span>Local companion not detected. Verify python companion script is running on port 9001.</span>
+                  <span>Pairing failed. Check the terminal token, port 9001, and trusted origin configuration.</span>
                 </div>
               )}
 

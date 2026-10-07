@@ -44,3 +44,22 @@ def test_in_memory_database_auto_generates_key():
     resolved = store.resolve(created.gateway_key)
     assert resolved is not None
     assert resolved.hkbu_api_key == "student-secret-key"
+
+
+def test_invalid_existing_key_is_preserved_and_credentials_recover(tmp_path):
+    import pytest
+
+    db_path = tmp_path / "gateway.db"
+    key_path = db_path.with_suffix(".key")
+    store = CredentialStore(str(db_path))
+    original_key = key_path.read_text()
+    created = store.create("student-secret-key")
+    key_path.write_text("damaged-key")
+
+    with pytest.raises(RuntimeError, match="restore the original key"):
+        CredentialStore(str(db_path))
+    assert key_path.read_text() == "damaged-key"
+
+    key_path.write_text(original_key)
+    restored = CredentialStore(str(db_path))
+    assert restored.resolve(created.gateway_key).hkbu_api_key == "student-secret-key"

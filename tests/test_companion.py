@@ -31,6 +31,7 @@ from companion.hkbu_genai_companion import (
 def server_info(tmp_path_factory: pytest.TempPathFactory) -> Generator[Tuple[str, int, Path], None, None]:
     base_dir = tmp_path_factory.mktemp("companion_workspace")
     server = create_companion_server(port=0, base_dir=base_dir)
+    server.pairing_token = 'test-pairing-token'
     port = server.server_address[1]
     base_url = f"http://{HOST}:{port}"
 
@@ -50,7 +51,7 @@ def make_request(
     data: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, Any], dict[str, str]]:
-    req_headers = {"User-Agent": "test-client"}
+    req_headers = {"User-Agent": "test-client", "Authorization": "Bearer test-pairing-token", "Origin": "http://localhost:8000"}
     if headers:
         req_headers.update(headers)
 
@@ -80,6 +81,34 @@ def test_host_binding_invariant() -> None:
     assert HOST == "127.0.0.1"
 
 
+@pytest.mark.parametrize("path", ["/healthz", "/api/execute", "/api/read_file", "/api/write_file", "/api/list_dir", "/api/web_fetch"])
+def test_pairing_required(server_info, path):
+    base_url, _, _ = server_info
+    status, _, _ = make_request(base_url + path, method="GET" if path == "/healthz" else "POST",
+                               data=None if path == "/healthz" else {}, headers={"Authorization": ""})
+    assert status == 401
+
+
+def test_untrusted_origin_denied_even_with_token(server_info):
+    base_url, _, _ = server_info
+    for method in ("POST", "OPTIONS"):
+        status, _, headers = make_request(base_url + "/api/execute", method=method,
+                                          data={"command": "echo forbidden"} if method == "POST" else None,
+                                          headers={"Origin": "https://evil.example"})
+        assert status == 403
+        assert "access-control-allow-origin" not in headers
+
+
+@pytest.mark.parametrize("authorization,origin,expected", [("", "http://localhost:8000", 401), ("Bearer test-pairing-token", "https://evil.example", 403)])
+def test_websocket_handshake_requires_pairing(server_info, authorization, origin, expected):
+    _, port, _ = server_info
+    with socket.create_connection((HOST, port), timeout=5) as connection:
+        connection.sendall((f"GET /ws HTTP/1.1\r\nHost: {HOST}:{port}\r\nUpgrade: websocket\r\n"
+                            f"Authorization: {authorization}\r\nOrigin: {origin}\r\n"
+                            "Sec-WebSocket-Key: dGVzdC13cy1ub25jZS0xMjM0\r\n\r\n").encode())
+        assert str(expected).encode() in connection.recv(1024).split(b"\r\n")[0]
+
+
 def test_healthz_endpoint(server_info: Tuple[str, int, Path]) -> None:
     base_url, port, base_dir = server_info
     status, data, headers = make_request(f"{base_url}/healthz")
@@ -89,7 +118,7 @@ def test_healthz_endpoint(server_info: Tuple[str, int, Path]) -> None:
     assert data.get("service") == "hkbu-genai-companion"
     assert data.get("version") == VERSION
     assert data.get("cwd") == str(base_dir.resolve())
-    assert headers.get("access-control-allow-origin") == "*"
+    assert headers.get("access-control-allow-origin") == "http://localhost:8000"
     assert "OPTIONS" in headers.get("access-control-allow-methods", "")
 
 
@@ -102,9 +131,9 @@ def test_cors_options_preflight(server_info: Tuple[str, int, Path]) -> None:
     )
 
     assert status == 204
-    assert headers.get("access-control-allow-origin") == "*"
+    assert headers.get("access-control-allow-origin") == "http://localhost:8000"
     assert "POST" in headers.get("access-control-allow-methods", "")
-    assert headers.get("access-control-allow-headers") == "*"
+    assert "Authorization" in headers.get("access-control-allow-headers", "")
 
 
 def test_execute_success(server_info: Tuple[str, int, Path]) -> None:
@@ -119,7 +148,7 @@ def test_execute_success(server_info: Tuple[str, int, Path]) -> None:
     assert data["exit_code"] == 0
     assert "companion test output" in data["stdout"]
     assert data["stderr"] == ""
-    assert headers.get("access-control-allow-origin") == "*"
+    assert headers.get("access-control-allow-origin") == "http://localhost:8000"
 
 
 def test_execute_non_zero_exit(server_info: Tuple[str, int, Path]) -> None:
@@ -251,6 +280,8 @@ def test_websocket_protocol(server_info: Tuple[str, int, Path]) -> None:
         f"Upgrade: websocket\r\n"
         f"Connection: Upgrade\r\n"
         f"Sec-WebSocket-Key: {sec_key}\r\n"
+        f"Authorization: Bearer test-pairing-token\r\n"
+        f"Origin: http://localhost:8000\r\n"
         f"Sec-WebSocket-Version: 13\r\n\r\n"
     )
     sock.sendall(handshake.encode("ascii"))

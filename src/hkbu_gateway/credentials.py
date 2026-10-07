@@ -9,7 +9,7 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -33,7 +33,10 @@ def resolve_or_generate_key(database_path: str, encryption_key: str | None = Non
             Fernet(stored_key.encode())
             return stored_key
         except Exception as exc:
-            logger.warning("Existing key file at %s was invalid (%s); generating a new key.", key_path, exc)
+            raise RuntimeError(
+                f"Existing encryption key file at {key_path} could not be loaded; "
+                "restore the original key rather than replacing it."
+            ) from exc
 
     new_key = Fernet.generate_key().decode()
     try:
@@ -94,6 +97,12 @@ class CredentialStore:
                 """
             )
 
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(gateway_credentials)")}
+            if "owner_id" not in columns:
+                connection.execute("ALTER TABLE gateway_credentials ADD COLUMN owner_id INTEGER")
+            if "name" not in columns:
+                connection.execute("ALTER TABLE gateway_credentials ADD COLUMN name TEXT NOT NULL DEFAULT ''")
+
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         if self._memory_conn:
@@ -112,21 +121,23 @@ class CredentialStore:
     def _hash(value: str) -> str:
         return hashlib.sha256(value.encode()).hexdigest()
 
-    def create(self, hkbu_api_key: str) -> Credential:
+    def create(self, hkbu_api_key: str, owner_id: int | None = None, name: str = "") -> Credential:
         gateway_key = f"hkbu-gw-{secrets.token_urlsafe(32)}"
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._connect() as connection:
             cursor = connection.execute(
                 """
                 INSERT INTO gateway_credentials
-                (gateway_key_hash, gateway_key_prefix, hkbu_api_key_ciphertext, created_at)
-                VALUES (?, ?, ?, ?)
+                (gateway_key_hash, gateway_key_prefix, hkbu_api_key_ciphertext, created_at, owner_id, name)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     self._hash(gateway_key),
                     gateway_key[:12],
                     self.cipher.encrypt(hkbu_api_key.encode()),
                     now,
+                    owner_id,
+                    name,
                 ),
             )
             key_id = cursor.lastrowid
@@ -158,7 +169,7 @@ class CredentialStore:
                 SET revoked_at = ?
                 WHERE gateway_key_hash = ? AND revoked_at IS NULL
                 """,
-                (datetime.now(UTC).isoformat(), self._hash(gateway_key)),
+                (datetime.now(timezone.utc).isoformat(), self._hash(gateway_key)),
             )
         return result.rowcount == 1
 
@@ -171,3 +182,20 @@ class CredentialStore:
                 """
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def list_owned(self, owner_id):
+        with self._connect() as connection:
+            rows = connection.execute("SELECT id,name,gateway_key_prefix,created_at,revoked_at FROM gateway_credentials WHERE owner_id=? ORDER BY id DESC", (owner_id,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def revoke_owned(self, owner_id, key_id):
+        with self._connect() as connection:
+            result = connection.execute("UPDATE gateway_credentials SET revoked_at=? WHERE id=? AND owner_id=? AND revoked_at IS NULL", (datetime.now(timezone.utc).isoformat(),key_id,owner_id))
+        return result.rowcount == 1
+
+    def claim(self, owner_id, gateway_key):
+        if not self.resolve(gateway_key):
+            return False
+        with self._connect() as connection:
+            result = connection.execute("UPDATE gateway_credentials SET owner_id=? WHERE gateway_key_hash=? AND owner_id IS NULL AND revoked_at IS NULL",(owner_id,self._hash(gateway_key)))
+        return result.rowcount == 1

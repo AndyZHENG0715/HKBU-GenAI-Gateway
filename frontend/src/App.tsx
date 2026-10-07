@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
+import { AccountPanel } from './components/AccountPanel';
 import { KeyGenerator } from './components/KeyGenerator';
 import { ResultCard } from './components/ResultCard';
 import { Playground } from './components/Playground';
@@ -126,7 +127,7 @@ export const App: React.FC = () => {
               </div>
 
               {/* Step 1 & 2: Key Generator Card */}
-              <KeyGenerator onSuccess={handleKeyGenerated} />
+              <AccountPanel refreshKey={generatedKey} onLogout={() => setGeneratedKey('')}><KeyGenerator onSuccess={handleKeyGenerated} /></AccountPanel>
 
               {/* Step 3: Result Card (If key generated) */}
               {generatedKey && (

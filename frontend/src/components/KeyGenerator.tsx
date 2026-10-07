@@ -7,6 +7,7 @@ interface KeyGeneratorProps {
 }
 
 export const KeyGenerator: React.FC<KeyGeneratorProps> = ({ onSuccess }) => {
+  const [keyName, setKeyName] = useState('');
   const [hkbuKey, setHkbuKey] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -21,7 +22,7 @@ export const KeyGenerator: React.FC<KeyGeneratorProps> = ({ onSuccess }) => {
     setLoading(true);
 
     try {
-      const result = await createCredential(hkbuKey);
+      const result = await createCredential(hkbuKey, keyName);
       onSuccess(result);
     } catch (err: any) {
       setError(err.message || 'Validation failed. Please verify your HKBU key and try again.');
@@ -92,6 +93,7 @@ export const KeyGenerator: React.FC<KeyGeneratorProps> = ({ onSuccess }) => {
 
       {/* Form Body */}
       <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-5">
+        <input aria-label="API key name" placeholder="Key name (e.g. Laptop)" maxLength={80} value={keyName} onChange={e => setKeyName(e.target.value)} className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent p-3 mb-4" />
         <div>
           <label htmlFor="hkbu-key-input" className="block text-sm font-semibold text-slate-800 dark:text-slate-200 mb-2">
             HKBU GenAI Platform Key

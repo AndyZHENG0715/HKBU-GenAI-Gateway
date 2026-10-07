@@ -33,14 +33,19 @@ export interface CredentialResponse {
   message: string;
 }
 
-export async function createCredential(hkbuApiKey: string): Promise<CredentialResponse> {
+export async function createCredential(hkbuApiKey: string, name = ""): Promise<CredentialResponse> {
   const root = getApiRoot();
+  const sessionResponse = await fetch(`${root}/api/account/session`, { credentials: "same-origin" });
+  const session = await sessionResponse.json();
+  if (!sessionResponse.ok) throw new Error("Sign in before creating an API key.");
   const response = await fetch(`${root}/api/credentials`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'X-CSRF-Token': session.csrf,
     },
-    body: JSON.stringify({ hkbu_api_key: hkbuApiKey.trim() }),
+    credentials: 'same-origin',
+    body: JSON.stringify({ hkbu_api_key: hkbuApiKey.trim(), name }),
   });
 
   const data = await response.json().catch(() => ({}));
@@ -248,4 +253,3 @@ export async function streamChatCompletion({
     onError(err instanceof Error ? err : new Error(String(err)));
   }
 }
-

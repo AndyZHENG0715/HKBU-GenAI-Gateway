@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import hmac
+import secrets
 import json
 import logging
 import os
@@ -20,6 +22,7 @@ logger = logging.getLogger("hkbu_companion")
 
 VERSION = "2.0.0"
 HOST = "127.0.0.1"
+DEFAULT_ORIGINS = ("https://byok.aitutor.ink", "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:5173", "http://127.0.0.1:5173")
 
 
 class CompanionService:
@@ -257,6 +260,9 @@ class CompanionServer(ThreadingHTTPServer):
         RequestHandlerClass: type[BaseHTTPRequestHandler],
         base_dir: Path | str | None = None,
     ) -> None:
+        self.pairing_token = secrets.token_urlsafe(32)
+        configured = os.environ.get("HKBU_COMPANION_ORIGINS")
+        self.trusted_origins = set(configured.split(",") if configured else DEFAULT_ORIGINS)
         self.service = CompanionService(base_dir)
         self.is_shutting_down = False
         super().__init__(server_address, RequestHandlerClass)
@@ -273,15 +279,34 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: Any) -> None:
         """Suppress noisy default request logging to avoid leaking sensitive commands."""
-        # Only log errors or debug messages
-        if len(args) > 1 and str(args[1]).startswith(("4", "5")):
-            logger.warning("%s - %s", self.address_string(), format % args)
+        return
+
+    def _origin_allowed(self) -> bool:
+        origin = self.headers.get("Origin")
+        return origin is None or origin in self.server.trusted_origins
+
+    def _authorize(self, websocket: bool = False) -> bool:
+        if not self._origin_allowed():
+            self.send_json(403, {"error": "Origin is not trusted"})
+            return False
+        authorization = self.headers.get("Authorization", "")
+        token = authorization[7:] if authorization.startswith("Bearer ") else ""
+        if websocket and not token:
+            protocols = self.headers.get("Sec-WebSocket-Protocol", "").split(",")
+            token = next((p.strip()[len("hkbu-pair."):] for p in protocols if p.strip().startswith("hkbu-pair.")), "")
+        if not hmac.compare_digest(token.encode("utf-8"), self.server.pairing_token.encode("utf-8")):
+            self.send_json(401, {"error": "Pair with the token shown in the companion terminal"})
+            return False
+        return True
 
     def _send_cors_headers(self) -> None:
-        """Add permissive CORS headers for local browser playground access."""
-        self.send_header("Access-Control-Allow-Origin", "*")
+        """Allow only explicitly trusted browser origins."""
+        origin = self.headers.get("Origin")
+        if origin in self.server.trusted_origins:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "*")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def send_json(self, status: int, data: dict[str, Any]) -> None:
         """Send a JSON HTTP response with CORS headers."""
@@ -295,6 +320,9 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:
         """Respond to CORS preflight requests."""
+        if not self._origin_allowed():
+            self.send_json(403, {"error": "Origin is not trusted"})
+            return
         self.send_response(204)
         self._send_cors_headers()
         self.send_header("Access-Control-Max-Age", "86400")
@@ -303,6 +331,8 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         """Handle HTTP GET and WebSocket upgrade requests."""
+        if not self._authorize(websocket=True):
+            return
         # 1. Check for WebSocket upgrade
         if self.headers.get("Upgrade", "").strip().lower() == "websocket":
             self.handle_websocket()
@@ -320,6 +350,8 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         """Handle HTTP POST API requests."""
+        if not self._authorize():
+            return
         url = urllib.parse.urlparse(self.path)
         path = url.path.rstrip("/")
 
@@ -533,6 +565,8 @@ def run_server(port: int = 9001, base_dir: str | Path | None = None) -> None:
     server = create_companion_server(port=port, base_dir=base_dir)
     actual_port = server.server_address[1]
     print_banner(actual_port, server.base_dir)
+    print("Pairing token (paste into Playground Local Node): " + server.pairing_token, flush=True)
+    print("Trusted origins: " + ", ".join(sorted(server.trusted_origins)), flush=True)
 
     try:
         server.serve_forever()
