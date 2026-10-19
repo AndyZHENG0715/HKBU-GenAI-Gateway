@@ -41,7 +41,7 @@ def test_json_stream_fallback_preserves_native_tools_reasoning_and_finish(finish
         async with httpx.AsyncClient(transport=transport) as client:
             provider = HKBUProvider(Settings(upstream_api_key="test-only"), client)
             return b"".join([event async for event in provider.chat_stream(
-                "gpt-4.1", {"messages": [], "stream": True},
+                "gpt-6-luna", {"messages": [], "stream": True},
             )]).decode()
 
     output = asyncio.run(run())

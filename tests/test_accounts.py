@@ -127,10 +127,10 @@ def test_key_management_endpoints_enforce_ownership(monkeypatch, tmp_path):
     app.state.accounts = AccountStore(credentials)
 
     class Provider:
-        async def chat(self, model, payload, key):
+        async def list_models(self, key):
+            # Key validation lists models instead of spending quota on a chat call.
             assert key == "university-key"
-            assert payload["max_tokens"] <= 10
-            return {"choices": [{"message": {"content": "hi"}}]}
+            return [{"id": "gpt-6-luna", "object": "model"}]
 
     app.state.provider = Provider()
     with TestClient(app, raise_server_exceptions=True) as client:

@@ -13,9 +13,9 @@ Students and researchers can convert their university platform key into standard
 - **🔑 1-Click Key Conversion**: Validate student HKBU Platform keys and generate standard `Bearer` tokens compatible with any OpenAI SDK or client application.
 - **🛠️ Universal Tool Calling (Function Calling)**:
   - Full OpenAI `tools: [...]` and `tool_calls` support for **all models** in both streaming and non-streaming modes.
-  - Native passthrough for Azure GPT and Google Gemini.
-  - Automatic **Prompt-Based Tool Emulation Adapter** (`tools.py`) for DeepSeek (`deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash`), Alibaba Cloud Qwen (`qwen3-max`, `qwen-plus`), and Google Vertex AI Llama (`llama-4-maverick`), seamlessly converting client tool schemas and unparsed upstream responses (both JSON blocks and XML tags like `<read_file>`) into standard OpenAI `tool_calls`.
-  - **🧠 Multi-Turn Context Restoration**: Automatically encapsulates conversation histories as structured transcripts for non-Azure models, overcoming upstream adapter history dropping.
+  - Native passthrough for every model on HKBU REST v1 (GPT, Gemini, Grok, Kimi, GLM, Qwen, DeepSeek).
+  - Retired model IDs (`gpt-4.1`, `qwen-plus`, …) are mapped to their successors so existing client configs keep working.
+  - **🎛️ Capability-Aware Parameters**: Strips `temperature` for models that reject it, keeps `reasoning_effort` within each model's allowed values, and raises `max_tokens` to the upstream minimum of 16.
 - **🛡️ Edge Protocol Stabilization for Coding Agents**:
   - Automatically sanitizes complex multi-turn message arrays (`messages[].content` containing Anthropic-style `tool_result` arrays) into plain strings or compliant OpenAI format, resolving upstream NestJS class-validator 400 errors.
   - Transparently strips unsupported parameters (`temperature`, `top_p`, penalties) when using Azure OpenAI reasoning models (`o1`, `o3-mini`, `gpt-5`).
@@ -122,7 +122,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="gpt-4.1",  # Or deepseek-v4-flash, gemini-2.5-flash, etc.
+    model="gpt-6-luna",  # Or qwen3.7-plus, deepseek-v4-flash-0731, gemini-3.8-flash, etc.
     messages=[
         {"role": "user", "content": "Explain quantum computing in one sentence."}
     ],
@@ -138,9 +138,9 @@ print(response.choices[0].message.content)
 | :--- | :--- | :--- |
 | `HKBU_DATABASE_PATH` | Path to SQLite database file | `hkbu_gateway.db` |
 | `HKBU_GATEWAY_ENCRYPTION_KEY` | 32-byte Fernet key for key encryption | Auto-generated into `hkbu_gateway.key` |
-| `HKBU_UPSTREAM_BASE_URL` | Upstream HKBU GenAI endpoint | `https://genai.hkbu.edu.hk/api/v0/rest` |
-| `HKBU_UPSTREAM_AUTH_HEADER` / `HKBU_API_KEY_HEADER` | Header name expected by upstream HKBU | `api-key` |
-| `HKBU_UPSTREAM_PATH_STYLE` | Upstream routing style (`direct` or `model_param`) | `direct` |
+| `HKBU_UPSTREAM_BASE_URL` | Upstream HKBU GenAI endpoint | `https://genai.hkbu.edu.hk/api/v1` |
+| `HKBU_UPSTREAM_AUTH_HEADER` / `HKBU_API_KEY_HEADER` | Header used for the upstream key (`Authorization` sends `Bearer <key>`) | `Authorization` |
+| `HKBU_UPSTREAM_PATH_STYLE` | Empty for REST v1; `openai/deployments` for the legacy v0 routes | empty |
 
 ---
 

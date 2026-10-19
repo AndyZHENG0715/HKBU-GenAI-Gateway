@@ -7,6 +7,15 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **HKBU REST v1 migration**: the upstream now defaults to `https://genai.hkbu.edu.hk/api/v1` with `Authorization: Bearer`, the model in the request body, and no `api-version`. Set `HKBU_UPSTREAM_PATH_STYLE=openai/deployments` to use the legacy v0 routes.
+- Replaced the model catalog with the 15 canonical REST v1 models and their published capabilities (vision, temperature, parallel tools, JSON output, reasoning effort values). Retired IDs map to their successors instead of being silently answered by `gpt-6-luna` upstream.
+- Key validation now calls the free `GET /models` endpoint instead of spending quota on a chat completion; the previous `max_tokens: 5` probe was rejected by REST v1.
+- Frontend model list, presets, and playground defaults use the new model IDs.
+
+### Removed
+- Qwen/DeepSeek/Llama history transcript encoding, the Qwen `developer`→`system` rewrite, and the Qwen `<think>` prompt injection; REST v1 accepts native history, roles, tools, and `reasoning_effort` for every model. Tool emulation remains available for models flagged `native_tool_call=False`.
+
 ### Added
 - Local username/password accounts with confirmation, recovery codes, owned key management and legacy-key claiming; automatic SQLite migration.
 - Local operator command for single-use 15-minute recovery codes.

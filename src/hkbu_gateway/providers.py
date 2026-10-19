@@ -121,20 +121,32 @@ class HKBUProvider:
         api_key = api_key or self.settings.upstream_api_key
         if not api_key:
             raise UpstreamError(503, "HKBU upstream credentials are not configured")
+        header = self.settings.upstream_auth_header
+        value = f"Bearer {api_key}" if header.lower() == "authorization" else api_key
         return {
             "Accept": "application/json",
             "Content-Type": "application/json",
-            self.settings.upstream_auth_header: api_key,
+            header: value,
         }
 
     def _url(self, model: str, operation: str) -> str:
+        base = self.settings.upstream_base_url
+        if not self.settings.upstream_path_style:
+            return f"{base}/{operation}"
         model_metadata = find_model(model)
         api_version = model_metadata.api_version if model_metadata else None
         query = f"?api-version={api_version}" if api_version else ""
-        return (
-            f"{self.settings.upstream_base_url}/"
-            f"{self.settings.upstream_path_style}/{model}/{operation}{query}"
+        return f"{base}/{self.settings.upstream_path_style}/{model}/{operation}{query}"
+
+    async def list_models(self, api_key: str | None = None) -> list[dict[str, Any]]:
+        response = await self.client.get(
+            f"{self.settings.upstream_base_url}/models",
+            headers=self._headers(api_key),
         )
+        if response.is_error:
+            raise UpstreamError(response.status_code, response.text[:2000])
+        data = response.json().get("data")
+        return data if isinstance(data, list) else []
 
     async def chat(
         self, model: str, payload: dict[str, Any], api_key: str | None = None
