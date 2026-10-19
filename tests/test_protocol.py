@@ -173,3 +173,51 @@ def test_provider_uses_rest_v1_routes_and_bearer_auth():
     ), client=None)
     assert legacy._url("qwen3.7-plus", "chat/completions").endswith("/openai/deployments/qwen3.7-plus/chat/completions")
     assert legacy._headers("k")["api-key"] == "k"
+
+
+def test_echoed_response_fields_are_stripped():
+    from hkbu_gateway.app import upstream_payload
+
+    request = ChatCompletionRequest(model="kimi-k3", messages=[
+        {"role": "user", "content": "Count lines."},
+        {"role": "assistant", "content": "", "reasoning_content": "use wc", "tool_calls": [{
+            "id": "call_1", "index": 0, "type": "function",
+            "function": {"name": "Bash", "arguments": '{"command":"wc -l x"}'},
+        }]},
+        {"role": "tool", "tool_call_id": "call_1", "content": "42 x"},
+    ])
+    messages = upstream_payload(request, "kimi-k3")["messages"]
+    # REST v1 rejects these with "property ... should not exist".
+    assert "reasoning_content" not in messages[1]
+    assert messages[1]["tool_calls"] == [{
+        "id": "call_1", "type": "function",
+        "function": {"name": "Bash", "arguments": '{"command":"wc -l x"}'},
+    }]
+
+
+def test_stream_forwards_tool_calls_sent_with_empty_content():
+    import asyncio
+    import httpx
+    from hkbu_gateway.config import Settings
+    from hkbu_gateway.providers import HKBUProvider
+
+    # Qwen/GLM on REST v1 put tool_calls next to content: "" in the same delta.
+    chunks = [
+        {"choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": None}]},
+        {"choices": [{"index": 0, "delta": {"content": "", "tool_calls": [{"index": 0, "id": "call_1", "type": "function", "function": {"name": "Bash", "arguments": ""}}]}, "finish_reason": None}]},
+        {"choices": [{"index": 0, "delta": {"content": "", "tool_calls": [{"index": 0, "function": {"arguments": '{"command":"ls"}'}}]}, "finish_reason": None}]},
+        {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]},
+    ]
+    body = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
+
+    async def run():
+        transport = httpx.MockTransport(lambda r: httpx.Response(200, text=body, headers={"content-type": "text/event-stream"}))
+        async with httpx.AsyncClient(transport=transport) as client:
+            provider = HKBUProvider(Settings(), client)
+            return b"".join([c async for c in provider.chat_stream("qwen3.7-plus", {"messages": [], "stream": True}, "k")]).decode()
+
+    events = [json.loads(line[6:]) for line in asyncio.run(run()).splitlines() if line.startswith("data: {")]
+    calls = [tc for e in events for tc in e["choices"][0]["delta"].get("tool_calls") or []]
+    assert calls[0]["function"]["name"] == "Bash"
+    assert "".join(tc["function"].get("arguments", "") for tc in calls) == '{"command":"ls"}'
+    assert events[-1]["choices"][0]["finish_reason"] == "tool_calls"

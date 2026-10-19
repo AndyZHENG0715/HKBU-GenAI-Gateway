@@ -419,8 +419,9 @@ class HKBUProvider:
                             if isinstance(content, str) and "reasoning_content" not in delta:
                                 events = think_filter.process(content)
                                 if not events:
-                                    # Text buffered or empty; if chunk carries finish_reason or role, forward it!
-                                    if finish_reason or delta.get("role"):
+                                    # Text buffered or empty; forward chunks that still carry a finish_reason,
+                                    # role or tool call (Qwen/GLM send tool_calls alongside content: "").
+                                    if finish_reason or delta.get("role") or delta.get("tool_calls"):
                                         c = dict(chunk_obj)
                                         synthetic_line = f"data: {json.dumps(c)}"
                                         if emulate and tool_stream_filter:
