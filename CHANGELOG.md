@@ -14,6 +14,7 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Frontend model list, presets, and playground defaults use the new model IDs.
 
 ### Fixed
+- Deployments that still pin `HKBU_UPSTREAM_BASE_URL` to the retired v0 address are moved to REST v1 automatically; key validation failed with HTTP 404 on them.
 - Strip response-only fields that agent clients echo back in history (`reasoning_content`, `tool_calls[].index`); REST v1 rejects them with HTTP 400, which broke every second turn of a tool loop.
 - Forward streamed tool-call deltas that arrive alongside `content: ""` (Qwen, GLM); they were dropped, leaving `finish_reason: "tool_calls"` with no calls.
 
