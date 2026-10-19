@@ -221,3 +221,16 @@ def test_stream_forwards_tool_calls_sent_with_empty_content():
     assert calls[0]["function"]["name"] == "Bash"
     assert "".join(tc["function"].get("arguments", "") for tc in calls) == '{"command":"ls"}'
     assert events[-1]["choices"][0]["finish_reason"] == "tool_calls"
+
+
+def test_pinned_v0_environment_is_moved_to_rest_v1(monkeypatch):
+    from hkbu_gateway.config import Settings
+
+    # Older deployments pinned the v0 defaults in their environment.
+    monkeypatch.setenv("HKBU_UPSTREAM_BASE_URL", "https://genai.hkbu.edu.hk/api/v0/rest/")
+    monkeypatch.setenv("HKBU_UPSTREAM_AUTH_HEADER", "api-key")
+    monkeypatch.setenv("HKBU_UPSTREAM_PATH_STYLE", "openai/deployments")
+    settings = Settings.from_env()
+    assert settings.upstream_base_url == "https://genai.hkbu.edu.hk/api/v1"
+    assert settings.upstream_auth_header == "Authorization"
+    assert settings.upstream_path_style == ""
