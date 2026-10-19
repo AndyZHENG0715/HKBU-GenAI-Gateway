@@ -13,6 +13,10 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Key validation now calls the free `GET /models` endpoint instead of spending quota on a chat completion; the previous `max_tokens: 5` probe was rejected by REST v1.
 - Frontend model list, presets, and playground defaults use the new model IDs.
 
+### Fixed
+- Strip response-only fields that agent clients echo back in history (`reasoning_content`, `tool_calls[].index`); REST v1 rejects them with HTTP 400, which broke every second turn of a tool loop.
+- Forward streamed tool-call deltas that arrive alongside `content: ""` (Qwen, GLM); they were dropped, leaving `finish_reason: "tool_calls"` with no calls.
+
 ### Removed
 - Qwen/DeepSeek/Llama history transcript encoding, the Qwen `developer`→`system` rewrite, and the Qwen `<think>` prompt injection; REST v1 accepts native history, roles, tools, and `reasoning_effort` for every model. Tool emulation remains available for models flagged `native_tool_call=False`.
 

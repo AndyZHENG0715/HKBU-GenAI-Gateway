@@ -402,6 +402,25 @@ def is_reasoning_requested(payload: dict[str, Any]) -> bool:
     return False
 
 
+MESSAGE_FIELDS = ("role", "content", "name", "tool_calls", "tool_call_id", "function_call")
+TOOL_CALL_FIELDS = ("id", "type", "function")
+
+
+def _strip_response_only_fields(msg: dict[str, Any]) -> None:
+    """Drop fields clients echo back from responses (reasoning_content, tool_calls[].index).
+
+    REST v1 validates messages strictly and returns HTTP 400 "property ... should not exist".
+    """
+    for key in [k for k in msg if k not in MESSAGE_FIELDS]:
+        msg.pop(key)
+    tool_calls = msg.get("tool_calls")
+    if isinstance(tool_calls, list):
+        for call in tool_calls:
+            if isinstance(call, dict):
+                for key in [k for k in call if k not in TOOL_CALL_FIELDS]:
+                    call.pop(key)
+
+
 # REST v1 rejects max_tokens / max_output_tokens below 16.
 MIN_OUTPUT_TOKENS = 16
 SAMPLING_PARAMETERS = ("temperature", "top_p", "presence_penalty", "frequency_penalty")
@@ -454,6 +473,7 @@ def upstream_payload(request: BaseModel, model_id: str | None = None) -> dict[st
         for msg in payload["messages"]:
             if isinstance(msg, dict):
                 _sanitize_message_content(msg)
+                _strip_response_only_fields(msg)
 
     model = find_model(model_id) if model_id else None
     if model:
