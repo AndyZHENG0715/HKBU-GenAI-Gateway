@@ -1,5 +1,12 @@
 # HKBU provider inventory
 
+> **Superseded (2026-10-20).** HKBU now exposes a provider-neutral REST v1 API at
+> `https://genai.hkbu.edu.hk/api/v1` with `Authorization: Bearer` auth and canonical
+> model IDs from `GET /api/v1/models`. Native tools, multi-turn history and the
+> `developer` role work on every chat model. The per-model capability table lives in
+> `src/hkbu_gateway/registry.py`, and AGENTS.md lists the current upstream constraints.
+> The rest of this page records the v0 platform for history.
+
 Source: downloaded Swagger HTML documents under `HKBU GenAI Platform/`.
 Snapshot date: 2026-09-13.
 

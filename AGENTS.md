@@ -4,20 +4,20 @@ Operational specification and instructions for AI coding agents working on HKBU 
 
 ## 1. Project Overview & Upstream Realities
 
-HKBU GenAI Gateway is a lightweight, zero-configuration, OpenAI-compatible proxy and self-service developer portal for the Hong Kong Baptist University (HKBU) GenAI Platform (`https://genai.hkbu.edu.hk/api/v0/rest`).
+HKBU GenAI Gateway is a lightweight, zero-configuration, OpenAI-compatible proxy and self-service developer portal for the Hong Kong Baptist University (HKBU) GenAI Platform (`https://genai.hkbu.edu.hk/api/v1`).
 
-- **Upstream URL**: `https://genai.hkbu.edu.hk/api/v0/rest`
-- **Core Function**: Converts university platform keys into standard OpenAI `Bearer` credentials, provides dynamic model capability discovery, emulates tool calling for gated models, normalizes multi-tag reasoning content, compensates for upstream adapter quirks, and serves a built-in React playground.
+- **Upstream URL**: `https://genai.hkbu.edu.hk/api/v1` (REST v1, `Authorization: Bearer`, model in the request body). The legacy `/api/v0/rest/.../deployments/{model}/...` routes still exist but are not used by default.
+- **Core Function**: Converts university platform keys into standard OpenAI `Bearer` credentials, publishes model capability metadata, fits client parameters to each model's capabilities, normalizes inline `<think>` reasoning, and serves a built-in React playground.
 - **Primary Runtime**: Python >= 3.9, FastAPI, Uvicorn, HTTPX, Cryptography (Fernet), SQLite.
 - **Frontend Stack**: React 19, TypeScript, Tailwind CSS, Vite.
 
 ### Critical Upstream Constraints
-Do not assume standard OpenAI server behavior from HKBU upstream. Always account for the following live-verified constraints:
-1. **Shared NestJS DTO vs. Provider Gating**: Upstream Swagger schemas declare `tools?: ToolDto[]` across all providers, but Alibaba Cloud Qwen (`qwen3-max`, `qwen-plus`), Google Vertex AI Llama (`llama-4-maverick`), and DeepSeek gate native tool calls. They must be routed through the gateway's prompt-based emulation adapter (`tools.py`).
-2. **Non-Azure History Dropping (Qwen, DeepSeek, Llama)**: The upstream HKBU adapter for non-Azure models (`qwen-plus`, `qwen3-max`, `deepSeek-V4-Pro-hkbu`, `deepseek-v4-flash`, `llama-4-maverick`) silently drops multi-turn history and only forwards the final user turn. The gateway must inject historical dialogue as a structured JSON transcript inside the final user turn (`_prepare_history_transcript`).
-3. **Role Restrictions**: Qwen upstream rejects `developer` roles with HTTP 400. Map `developer` to `system` on the Qwen path.
-4. **Reasoning Parameter Rejection**: Azure OpenAI `o1`, `o3-mini`, `gpt-5`, and `gpt-5-mini` reject custom `temperature`, `top_p`, `presence_penalty`, and `frequency_penalty`. Map `max_tokens` to `max_completion_tokens`.
-5. **Content Type Validation**: Upstream NestJS DTO strictly validates message content shapes; empty strings (`""`) trigger HTTP 400 on certain roles. Use compliant fallbacks (`(success)` for tools, `None` for assistant tool calls, `" "` for user/text).
+Since the October 2026 platform update, HKBU exposes a provider-neutral, OpenAI-compatible REST v1 API (`/chat/completions`, `/responses`, `/embeddings`, `/models`, `/health`). Its "Models & capabilities" table is the source of truth for `registry.py`. Live-verified on 2026-10-20:
+1. **Canonical Model IDs Only**: Use the IDs from `GET /api/v1/models` (e.g. `gpt-6-luna`, `qwen3.7-plus`, `deepseek-v4-flash-0731`). Upstream silently answers retired IDs (`gpt-4.1`, `qwen-plus`, …) with `gpt-6-luna`, so the gateway maps them to their successors in `LEGACY_ALIASES` instead of passing them through.
+2. **Native Tools and History**: Every chat model accepts native `tools` and receives the full multi-turn history (requests are stateless; resend everything). Tool emulation (`tools.py`) stays available only for models flagged `native_tool_call=False`; none are today. The old history transcript and `developer`→`system` rewrite were removed.
+3. **Per-Model Parameters**: Models without "Temp." in the capability table (GPT family, `gemini-3.8-flash`, `kimi-k3`) reject `temperature` with HTTP 400; the gateway strips sampling parameters for them. `reasoning_effort` must be one of the model's listed values. `max_tokens` below 16 is rejected.
+4. **Inline Reasoning**: `qwen3.7-plus`, `qwen3.8-max`, `kimi-k3` and `glm-5.2` can write `<think>…</think>` into `content`; keep `ThinkStreamFilter` and the non-streaming split.
+5. **Content Type Validation**: Keep the compliant empty-content fallbacks (`(success)` for tools, `None` for assistant tool calls, `" "` for user/text) until they are re-verified against REST v1.
 
 ## 2. Git Discipline & Anti-"Vibe-Coding" Guardrails
 
@@ -37,7 +37,7 @@ To prevent AI agent desynchronizations, accidental code overwrites, or structura
    - **Asset Parity**: Any changes in `frontend/src/` must be compiled and committed together with the regenerated `static/` bundle.
 
 3. **Preserve Upstream Compensations (No Blind Refactoring)**:
-   The gateway contains specialized compensations for upstream HKBU platform quirks (such as transcript history encoding in `_prepare_history_transcript`, empty string replacements `(success)`, tool call emulation, and reasoning parameter stripping). AI agents must NEVER unilaterally "clean up" or remove these mechanisms without verifying against live upstream constraints.
+   The gateway contains specialized compensations for upstream HKBU platform quirks (such as empty string replacements `(success)`, per-model parameter fitting in `_sanitize_parameters`, retired-ID aliases, and `<think>` normalization). AI agents must NEVER unilaterally "clean up" or remove these mechanisms without verifying against live upstream constraints.
 
 4. **UI Invariants (Zero Native Dialogs)**:
    Never introduce native browser dialogs (`window.alert`, `window.confirm`, `window.prompt`, or raw unstyled `<select>`). Always use themed in-app modals, inline buttons, or reactive badges matching the design system.
@@ -87,11 +87,11 @@ Do not violate module boundaries. Each module has a strict single responsibility
 
 | Path | Responsibility | Boundary Rules |
 | :--- | :--- | :--- |
-| `src/hkbu_gateway/app.py` | FastAPI application, route handlers, error handlers, message content normalization (`_sanitize_message_content`), dialogue history transcript encoding (`_prepare_history_transcript`), web fetch proxy (`/api/tools/web_fetch`), reasoning parameter sanitization (`o1`/`o3`/`gpt-5`), static asset mounting. | Do not execute raw SQL here. Interacts with `CredentialStore` via app state. Never log user prompt or message content to stdout/console. |
+| `src/hkbu_gateway/app.py` | FastAPI application, route handlers, error handlers, message content normalization (`_sanitize_message_content`), per-model parameter fitting (`_sanitize_parameters`), web fetch proxy (`/api/tools/web_fetch`), static asset mounting. | Do not execute raw SQL here. Interacts with `CredentialStore` via app state. Never log user prompt or message content to stdout/console. |
 | `src/hkbu_gateway/credentials.py` | Encrypted SQLite credential storage (`CredentialStore`). Fernet key generation and persistence (`hkbu_gateway.key`). | Hash gateway keys with SHA-256 before storage. Never store plaintext keys. |
-| `src/hkbu_gateway/registry.py` | Model catalog, capabilities flags, context windows, models.dev / WorkBuddy / OpenCode metadata formatting. | All model additions must declare `supports_tool_call`, `supports_reasoning`, `supports_vision`, and `native_tool_call`. |
+| `src/hkbu_gateway/registry.py` | Model catalog, capabilities flags, context windows, models.dev / WorkBuddy / OpenCode metadata formatting. | All model additions must mirror the REST v1 capability table: `supports_vision`, `supports_temperature`, `supports_parallel_tools`, `supports_structured_output`, `reasoning_efforts`, and `native_tool_call`. |
 | `src/hkbu_gateway/providers.py` | Upstream HTTP client, upstream path resolution, streaming response processing, coordinated `ThinkStreamFilter` and `tool_stream_filter`. | Handles upstream SSE parsing, error mapping, and guarantees initial chunk and final `finish_reason: "stop"` frames. |
-| `src/hkbu_gateway/tools.py` | Tool calling emulation adapter for unparsed models (DeepSeek, Qwen, Llama). Supports JSON blocks and XML tags (`<tool_name>...</tool_name>`). `EmulatedToolStreamFilter`. | Injects tool definitions as a distinct system protocol, preserves historical tool call IDs, handles `tool_choice: "none"`, and converts model output into OpenAI `tool_calls`. |
+| `src/hkbu_gateway/tools.py` | Dormant tool calling emulation adapter for models flagged `native_tool_call=False` (none in REST v1 today). Supports JSON blocks and XML tags (`<tool_name>...</tool_name>`). `EmulatedToolStreamFilter`. | Injects tool definitions as a distinct system protocol, preserves historical tool call IDs, handles `tool_choice: "none"`, and converts model output into OpenAI `tool_calls`. |
 | `src/hkbu_gateway/protocol.py` | Pydantic schemas for OpenAI completion, embedding, and model responses. | Maintain strict OpenAI compatibility. |
 | `src/hkbu_gateway/config.py` | Environment variable resolution and default configuration dataclasses. | Do not hardcode runtime secrets. |
 | `frontend/src/` | Single-page developer portal and interactive chat playground. | Production output must go to `static/` with relative asset links (`base: './'`). |

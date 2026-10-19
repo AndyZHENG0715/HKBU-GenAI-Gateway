@@ -69,7 +69,7 @@ const STORAGE_KEY_ACTIVE = 'hkbu_playground_active_session_v2';
 const createDefaultSession = (): ChatSession => ({
   id: `session-${Date.now()}`,
   title: 'New Conversation',
-  model: 'gpt-4.1',
+  model: 'gpt-6-luna',
   createdAt: Date.now(),
   updatedAt: Date.now(),
   isAgentMode: true,
@@ -161,7 +161,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
     return sessions.find((s) => s.id === activeSessionId) || sessions[0];
   }, [sessions, activeSessionId]);
 
-  const selectedModel = currentSession?.model || 'gpt-4.1';
+  const selectedModel = currentSession?.model || 'gpt-6-luna';
   const isAgentMode = currentSession?.isAgentMode ?? true;
   const userMessageCount = useMemo(() => {
     return (currentSession?.messages || []).filter((m) => m.role === 'user').length;
@@ -1328,8 +1328,8 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                                         {selectedModel.toLowerCase().includes('deepseek') && (
                                           <button
                                             onClick={() => {
-                                              handleModelChange('gemini-2.5-flash');
-                                              handleRetry(index, 'gemini-2.5-flash');
+                                              handleModelChange('gemini-3.8-flash');
+                                              handleRetry(index, 'gemini-3.8-flash');
                                             }}
                                             disabled={isStreaming}
                                             className="px-2.5 py-1 rounded-lg text-xs font-medium bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750 flex items-center space-x-1 transition-colors cursor-pointer shadow-xs"

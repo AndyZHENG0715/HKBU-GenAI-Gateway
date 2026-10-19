@@ -1,81 +1,80 @@
-from hkbu_gateway.registry import find_model
+from hkbu_gateway.registry import MODELS, find_model
 from hkbu_gateway.protocol import ChatCompletionRequest
 import json
 import pytest
 
 
-@pytest.mark.parametrize("model", ["qwen-plus", "qwen3-max", "Qwen-3-max", "deepSeek-V4-Pro-hkbu", "deepseek-v4-flash", "llama-4-maverick"])
-def test_history_is_visible_to_last_user_only_upstream(model):
-    from hkbu_gateway.app import upstream_payload
-
-    request = ChatCompletionRequest(model=model, messages=[
-        {"role": "system", "content": "Follow workspace rules."},
-        {"role": "user", "content": "Remember ORCHID."},
-        {"role": "assistant", "content": "I will remember ORCHID."},
-        {"role": "developer", "content": "Reply briefly."},
-        {"role": "user", "content": "What was the marker?"},
-    ])
-    prepared = upstream_payload(request, model)
-    messages = prepared["messages"]
-    assert [m["role"] for m in messages] == ["system", "system", "user"]
-    assert messages[0]["content"] == "Follow workspace rules."
-    assert messages[1]["content"] == "Reply briefly."
-    assert "ORCHID" in messages[-1]["content"]
-    assert '"role":"assistant"' in messages[-1]["content"]
-    assert messages[-1]["content"].endswith("What was the marker?")
-    assert request.messages[3].role == "developer"
+CHAT_MODELS = [m.id for m in MODELS if m.kind == "chat"]
 
 
-@pytest.mark.parametrize("model", ["qwen-plus", "deepSeek-V4-Pro-hkbu", "llama-4-maverick"])
-def test_tool_results_survive_last_user_only_upstream(model):
+@pytest.mark.parametrize("model", CHAT_MODELS)
+def test_rest_v1_receives_native_history_and_roles(model):
     from hkbu_gateway.app import upstream_payload
 
     messages = [
-        {"role": "user", "content": "Read x and edit it."},
+        {"role": "system", "content": "Follow workspace rules."},
+        {"role": "user", "content": "Read x."},
         {"role": "assistant", "content": None, "tool_calls": [{
             "id": "call_read", "type": "function",
             "function": {"name": "read_file", "arguments": '{"path":"x"}'},
         }]},
         {"role": "tool", "tool_call_id": "call_read", "content": "ORCHID"},
+        {"role": "developer", "content": "Reply briefly."},
+        {"role": "user", "content": "What was in x?"},
     ]
     prepared = upstream_payload(ChatCompletionRequest(model=model, messages=messages), model)
-    assert len(prepared["messages"]) == 1
-    content = prepared["messages"][0]["content"]
-    transcript = json.loads(content.split("\n", 1)[1].split("\n\nCurrent user request", 1)[0])
-    assert transcript == messages
-    assert content.endswith("Continue the latest user request using the tool results above.")
+    # REST v1 is stateless and keeps every turn, so no transcript or role rewriting.
+    assert prepared["messages"] == messages
 
 
-@pytest.mark.parametrize("model", ["gpt-4.1", "gpt-5", "gemini-2.5-flash", "gemini-2.5-pro"])
-def test_history_workaround_does_not_change_native_models(model):
-    from hkbu_gateway.app import upstream_payload
-
-    messages = [{"role": "user", "content": "Remember ORCHID."}, {"role": "assistant", "content": "OK"}, {"role": "user", "content": "Recall it."}]
-    assert upstream_payload(ChatCompletionRequest(model=model, messages=messages), model)["messages"] == messages
-
-
-@pytest.mark.parametrize("model", ["qwen-plus", "deepSeek-V4-Pro-hkbu", "llama-4-maverick"])
-def test_single_turn_does_not_add_transcript_tokens(model):
-    from hkbu_gateway.app import upstream_payload
-
-    messages = [{"role": "system", "content": "Follow instructions."}, {"role": "user", "content": "Hi"}]
-    assert upstream_payload(ChatCompletionRequest(model=model, messages=messages), model)["messages"] == messages
-
-
-def test_registry_contains_documented_models():
-    assert find_model("gpt-4.1").provider == "gpt"
+def test_registry_matches_rest_v1_catalog():
+    assert find_model("gpt-6-luna").provider == "gpt"
     assert find_model("text-embedding-3-small").kind == "embedding"
-    assert find_model("Qwen-3-max").id == "qwen3-max"
-    assert find_model("GPT 5 Mini").id == "gpt-5-mini"
+    assert find_model("Qwen3.7 Plus").id == "qwen3.7-plus"
+    assert find_model("llama-4-maverick") is None
+
+
+@pytest.mark.parametrize("legacy,current", [
+    ("gpt-4.1", "gpt-6-luna"),
+    ("qwen-plus", "qwen3.7-plus"),
+    ("qwen3-max", "qwen3.8-max"),
+    ("deepseek-v4-flash", "deepseek-v4-flash-0731"),
+    ("gemini-2.5-flash", "gemini-3.8-flash"),
+])
+def test_retired_ids_map_to_successors(legacy, current):
+    assert find_model(legacy).id == current
+
+
+def test_parameters_fit_capability_table():
+    from hkbu_gateway.app import upstream_payload
+
+    def prepare(model, **extra):
+        request = ChatCompletionRequest(model=model, messages=[{"role": "user", "content": "hi"}], **extra)
+        return upstream_payload(request, model)
+
+    gpt = prepare("gpt-6-luna", temperature=0.2, top_p=0.9, max_tokens=5, reasoning_effort="xhigh")
+    assert "temperature" not in gpt and "top_p" not in gpt
+    assert gpt["max_tokens"] == 16
+    assert gpt["reasoning_effort"] == "xhigh"
+
+    qwen = prepare("qwen3.7-plus", temperature=0.2, reasoning_effort="medium")
+    assert qwen["temperature"] == 0.2
+    assert qwen["reasoning_effort"] == "high"
+    assert prepare("qwen3.7-plus", enable_thinking=True)["reasoning_effort"] == "high"
+    assert prepare("qwen3.7-plus", reasoning_effort="none")["reasoning_effort"] == "none"
+    assert prepare("deepseek-v4-flash-0731", reasoning_effort="low")["reasoning_effort"] == "high"
+    assert prepare("deepseek-v4-flash-0731", reasoning_effort="none")["reasoning_effort"] == "high"
+    assert "reasoning_effort" not in prepare("kimi-k3", reasoning_effort="high")
+    assert "reasoning_effort" not in prepare("glm-5.2")
 
 
 def test_chat_request_keeps_openai_shape():
     request = ChatCompletionRequest(
-        model="deepseek-v4-flash",
+        model="deepseek-v4-flash-0731",
         messages=[{"role": "user", "content": "hello"}],
         stream=True,
     )
-    assert request.model == "deepseek-v4-flash"
+    assert request.model == "deepseek-v4-flash-0731"
     assert request.messages[0].content == "hello"
 
 
@@ -84,7 +83,7 @@ def test_upstream_payload_sanitizes_content_and_reasoning_params():
 
     # VS Code / Copilot sends complex list of parts
     request = ChatCompletionRequest(
-        model="o3-mini",
+        model="gpt-6-luna",
         messages=[
             {"role": "user", "content": [{"type": "text", "value": "check file"}]},
             {
@@ -98,7 +97,7 @@ def test_upstream_payload_sanitizes_content_and_reasoning_params():
         top_p=0.9,
     )
 
-    payload = upstream_payload(request, "o3-mini")
+    payload = upstream_payload(request, "gpt-6-luna")
 
     # Reasoning parameters stripped
     assert "temperature" not in payload
@@ -114,7 +113,7 @@ def test_upstream_payload_sanitizes_empty_and_whitespace_content():
     from hkbu_gateway.app import upstream_payload
 
     request = ChatCompletionRequest(
-        model="gpt-4.1",
+        model="gpt-6-luna",
         messages=[
             {"role": "user", "content": ""},
             {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]},
@@ -125,7 +124,7 @@ def test_upstream_payload_sanitizes_empty_and_whitespace_content():
         ],
     )
 
-    payload = upstream_payload(request, "gpt-4.1")
+    payload = upstream_payload(request, "gpt-6-luna")
 
     # Upstream HKBU requires non-empty strings and specific nulls
     assert payload["messages"][0]["content"] == " "
@@ -157,3 +156,20 @@ def test_clean_html_text():
     assert "This is a paragraph with a link." in cleaned
     assert "Content block" in cleaned
 
+
+
+def test_provider_uses_rest_v1_routes_and_bearer_auth():
+    from hkbu_gateway.config import Settings
+    from hkbu_gateway.providers import HKBUProvider
+
+    provider = HKBUProvider(Settings(), client=None)
+    assert provider._url("qwen3.7-plus", "chat/completions") == "https://genai.hkbu.edu.hk/api/v1/chat/completions"
+    assert provider._headers("k")["Authorization"] == "Bearer k"
+
+    legacy = HKBUProvider(Settings(
+        upstream_base_url="https://genai.hkbu.edu.hk/api/v0/rest",
+        upstream_auth_header="api-key",
+        upstream_path_style="openai/deployments",
+    ), client=None)
+    assert legacy._url("qwen3.7-plus", "chat/completions").endswith("/openai/deployments/qwen3.7-plus/chat/completions")
+    assert legacy._headers("k")["api-key"] == "k"

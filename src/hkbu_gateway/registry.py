@@ -21,6 +21,9 @@ class Model:
     supports_vision: bool = False
     supports_structured_output: bool = True
     native_tool_call: bool = True
+    supports_temperature: bool = True
+    supports_parallel_tools: bool = True
+    reasoning_efforts: tuple[str, ...] = ()
 
     def to_dict(self, created: int | None = None) -> dict[str, Any]:
         display_name = self.name or self.id
@@ -60,25 +63,60 @@ class Model:
             },
             "context_window": self.context_window,
             "max_output_tokens": self.max_output,
+            "supports_temperature": self.supports_temperature,
+            "reasoning_efforts": list(self.reasoning_efforts),
         }
 
 
+# Canonical REST v1 model IDs and capabilities, from the HKBU "Models & capabilities"
+# table (2026-10-20). Context and output limits are not published, so these are
+# conservative defaults rather than provider maxima.
+def _chat(
+    model_id: str,
+    provider: str,
+    name: str,
+    *,
+    vision: bool,
+    temperature: bool,
+    parallel: bool = True,
+    json_mode: bool = True,
+    efforts: tuple[str, ...] = (),
+) -> Model:
+    return Model(
+        model_id,
+        provider,
+        "chat",
+        None,
+        name=name,
+        context_window=128_000,
+        max_output=16_384,
+        supports_tool_call=True,
+        supports_reasoning=bool(efforts),
+        supports_vision=vision,
+        supports_structured_output=json_mode,
+        native_tool_call=True,
+        supports_temperature=temperature,
+        supports_parallel_tools=parallel,
+        reasoning_efforts=efforts,
+    )
+
+
 MODELS = (
-    Model("gpt-5", "gpt", "chat", "2024-12-01-preview", name="GPT-5", context_window=1047576, max_output=65536, supports_tool_call=True, supports_reasoning=True, supports_vision=True, native_tool_call=True),
-    Model("gpt-5-mini", "gpt", "chat", "2024-12-01-preview", name="GPT-5 mini", context_window=1047576, max_output=65536, supports_tool_call=True, supports_reasoning=True, supports_vision=True, native_tool_call=True),
-    Model("gpt-4.1", "gpt", "chat", "2024-12-01-preview", name="GPT-4.1", context_window=1047576, max_output=32768, supports_tool_call=True, supports_reasoning=False, supports_vision=True, native_tool_call=True),
-    Model("gpt-4.1-mini", "gpt", "chat", "2024-12-01-preview", name="GPT-4.1 mini", context_window=1047576, max_output=32768, supports_tool_call=True, supports_reasoning=False, supports_vision=True, native_tool_call=True),
-    Model("o1", "gpt", "chat", "2024-12-01-preview", name="o1", context_window=200000, max_output=100000, supports_tool_call=True, supports_reasoning=True, supports_vision=True, native_tool_call=True),
-    Model("o3-mini", "gpt", "chat", "2024-12-01-preview", name="o3-mini", context_window=200000, max_output=100000, supports_tool_call=True, supports_reasoning=True, supports_vision=False, native_tool_call=True),
-    Model("deepSeek-V4-Pro-hkbu", "deepseek", "chat", "2025-04-01-preview", name="DeepSeek V4 Pro", context_window=1000000, max_output=384000, supports_tool_call=True, supports_reasoning=True, supports_vision=False, native_tool_call=False),
-    Model("deepseek-v4-flash", "deepseek", "chat", "2024-05-01-preview", name="DeepSeek V4 Flash", context_window=1000000, max_output=384000, supports_tool_call=True, supports_reasoning=True, supports_vision=False, native_tool_call=False),
-    Model("gemini-2.5-pro", "gemini", "chat", None, name="Gemini 2.5 Pro", context_window=2000000, max_output=65536, supports_tool_call=True, supports_reasoning=True, supports_vision=True, native_tool_call=True),
-    Model("gemini-2.5-flash", "gemini", "chat", None, name="Gemini 2.5 Flash", context_window=1000000, max_output=65536, supports_tool_call=True, supports_reasoning=True, supports_vision=True, native_tool_call=True),
-    Model("qwen3-max", "qwen", "chat", "v1", name="Qwen3 Max", context_window=1000000, max_output=65536, supports_tool_call=True, supports_reasoning=True, supports_vision=False, native_tool_call=False),
-    Model("qwen-plus", "qwen", "chat", "v1", name="Qwen Plus", context_window=131072, max_output=8192, supports_tool_call=True, supports_reasoning=True, supports_vision=False, native_tool_call=False),
-    Model("llama-4-maverick", "llama", "chat", "20240723", name="Llama 4 Maverick", context_window=1000000, max_output=32768, supports_tool_call=True, supports_reasoning=False, supports_vision=False, native_tool_call=False),
-    Model("text-embedding-3-large", "embeddings", "embedding", "2024-05-01-preview", name="Text Embedding 3 Large", context_window=8191, max_output=3072, supports_tool_call=False, supports_reasoning=False, supports_vision=False, native_tool_call=False),
-    Model("text-embedding-3-small", "embeddings", "embedding", "2024-05-01-preview", name="Text Embedding 3 Small", context_window=8191, max_output=1536, supports_tool_call=False, supports_reasoning=False, supports_vision=False, native_tool_call=False),
+    _chat("gpt-6-luna", "gpt", "GPT-6 Luna", vision=True, temperature=False, efforts=("none", "low", "medium", "high", "xhigh", "max")),
+    _chat("gpt-5.6-terra", "gpt", "GPT-5.6 Terra", vision=True, temperature=False, efforts=("low", "medium", "high")),
+    _chat("gpt-6.1-sol", "gpt", "GPT-6.1 Sol", vision=True, temperature=False, efforts=("low", "medium", "high", "xhigh", "max")),
+    _chat("gpt-6-astra", "gpt", "GPT-6 Astra", vision=True, temperature=False, efforts=("low", "medium", "high", "xhigh", "max")),
+    _chat("gemini-3.1-pro-preview", "gemini", "Gemini 3.1 Pro Preview", vision=True, temperature=True, efforts=("low", "high")),
+    _chat("gemini-3.8-flash", "gemini", "Gemini 3.8 Flash", vision=True, temperature=False, efforts=("low", "medium", "high")),
+    _chat("grok-4.6", "grok", "Grok 4.6", vision=True, temperature=True, json_mode=False, efforts=("low", "medium", "high", "xhigh")),
+    _chat("kimi-k3", "moonshot", "Kimi K3", vision=True, temperature=False, json_mode=False),
+    _chat("glm-5.2", "glm", "GLM-5.2", vision=False, temperature=True, parallel=False, efforts=("none", "minimal", "low", "medium", "high", "xhigh", "max")),
+    _chat("qwen3.8-max", "qwen", "Qwen3.8 Max", vision=False, temperature=True, efforts=("none", "high")),
+    _chat("qwen3.7-plus", "qwen", "Qwen3.7 Plus", vision=True, temperature=True, efforts=("none", "high")),
+    _chat("deepseek-v4-flash-0731", "deepseek", "DeepSeek V4 Flash", vision=False, temperature=True, efforts=("high", "max")),
+    _chat("deepSeek-V4-Pro-hkbu", "deepseek", "DeepSeek V4 Pro", vision=False, temperature=True, efforts=("high", "max")),
+    Model("text-embedding-3-large", "embeddings", "embedding", None, name="Text Embedding 3 Large", context_window=8191, max_output=3072, supports_tool_call=False, supports_reasoning=False, supports_vision=False, native_tool_call=False),
+    Model("text-embedding-3-small", "embeddings", "embedding", None, name="Text Embedding 3 Small", context_window=8191, max_output=1536, supports_tool_call=False, supports_reasoning=False, supports_vision=False, native_tool_call=False),
 )
 
 
@@ -86,7 +124,26 @@ def _normalize_name(name: str) -> str:
     return name.lower().replace("-", "").replace("_", "").replace(" ", "")
 
 
+# IDs retired by the 2026-10 platform update, mapped to their closest successor so
+# existing client configs keep working. Upstream silently answers unknown IDs with
+# gpt-6-luna, which would hide the change from users.
+LEGACY_ALIASES = {
+    "gpt-5": "gpt-6-luna",
+    "gpt-5-mini": "gpt-6-luna",
+    "gpt-4.1": "gpt-6-luna",
+    "gpt-4.1-mini": "gpt-6-luna",
+    "o1": "gpt-6-luna",
+    "o3-mini": "gpt-6-luna",
+    "gemini-2.5-pro": "gemini-3.1-pro-preview",
+    "gemini-2.5-flash": "gemini-3.8-flash",
+    "qwen3-max": "qwen3.8-max",
+    "qwen-plus": "qwen3.7-plus",
+    "deepseek-v4-flash": "deepseek-v4-flash-0731",
+}
+
+
 def find_model(model_id: str) -> Model | None:
+    model_id = LEGACY_ALIASES.get(model_id.lower(), model_id)
     exact = next((model for model in MODELS if model.id == model_id), None)
     if exact:
         return exact

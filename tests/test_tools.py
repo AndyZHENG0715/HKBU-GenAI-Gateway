@@ -5,6 +5,7 @@ import json
 import httpx
 import pytest
 
+from hkbu_gateway import registry
 from hkbu_gateway.app import upstream_payload
 from hkbu_gateway.config import Settings
 from hkbu_gateway.protocol import ChatCompletionRequest
@@ -16,6 +17,17 @@ from hkbu_gateway.tools import (
     is_tool_emulation_required,
     prepare_emulated_payload,
 )
+
+# No REST v1 model needs tool emulation today, so the adapter is exercised through a
+# synthetic gated model. Keep it working in case a future deployment gates tools again.
+GATED = "gated-test-model"
+
+
+@pytest.fixture(autouse=True)
+def gated_model(monkeypatch):
+    model = registry.Model(GATED, "qwen", "chat", None, native_tool_call=False)
+    monkeypatch.setattr(registry, "MODELS", registry.MODELS + (model,))
+
 
 SAMPLE_TOOLS = [
     {
@@ -36,7 +48,7 @@ SAMPLE_TOOLS = [
 ]
 
 
-def copilot_payload(model="qwen-plus"):
+def copilot_payload(model=GATED):
     return upstream_payload(ChatCompletionRequest(
         model=model,
         messages=[
@@ -64,14 +76,13 @@ def test_copilot_system_messages_and_history_survive_model_switch():
     assert tools == payload["tools"]
     assert "parallel_tool_calls" not in prepared
     messages = prepared["messages"]
-    assert [m["role"] for m in messages] == ["system", "system", "system", "system", "user"]
-    assert messages[:3] == payload["messages"][:3]
-    system = messages[3]["content"]
+    # REST v1 keeps native history, so earlier turns pass through and the gateway
+    # protocol is inserted just before the final user turn.
+    assert [m["role"] for m in messages] == ["system", "system", "user", "assistant", "developer", "system", "user"]
+    assert messages[:5] == payload["messages"][:5]
+    system = messages[5]["content"]
     assert "# Gateway" in system
     assert messages[-1] == payload["messages"][-1]
-    assert "9.8大还是9.11大？" in messages[-1]["content"]
-    assert '"role":"assistant"' in messages[-1]["content"]
-    assert messages[-1]["content"].endswith("你确定？")
     for tool in tools:
         assert tool["function"]["name"] in system
 
@@ -86,7 +97,7 @@ def test_native_tool_history_is_adapted_even_without_current_tools():
             {"role": "user", "content": "Continue editing."},
         ],
     }
-    assert is_tool_emulation_required("qwen-plus", payload)
+    assert is_tool_emulation_required(GATED, payload)
     prepared, tools = prepare_emulated_payload(payload)
     assert tools == []
     assert "call_1" in prepared["messages"][0]["content"]
@@ -108,7 +119,7 @@ def test_assistant_multimodal_content_and_legacy_calls_are_preserved():
     assert "function_call" not in prepared["messages"][0]
 
 
-@pytest.mark.parametrize("model", ["qwen-plus", "qwen3-max"])
+@pytest.mark.parametrize("model", [GATED])
 @pytest.mark.parametrize("response_mode", ["json", "sse", "json_in_stream"])
 @pytest.mark.parametrize("tool_choice", ["auto", "none"])
 @pytest.mark.parametrize("reply", ["tool", "GitHub Copilot", "9.8 = 9.80，所以 9.8 大于 9.11。"])
@@ -161,12 +172,11 @@ def test_provider_adapts_copilot_request_and_respects_disabled_tools(model, resp
     asyncio.run(run())
     sent = captured[0]
     assert all(key not in sent for key in ("tools", "tool_choice", "parallel_tool_calls"))
-    assert [m["role"] for m in sent["messages"]] == (["system"] * 4 + ["user"])
-    assert sent["messages"][-1]["content"].endswith("你确定？")
-    assert "9.8大还是9.11大？" in sent["messages"][-1]["content"]
+    assert [m["role"] for m in sent["messages"]] == ["system", "system", "user", "assistant", "developer", "system", "user"]
+    assert sent["messages"][-1]["content"] == "你确定？"
 
 
-@pytest.mark.parametrize("model", ["gpt-4.1", "gemini-2.5-flash"])
+@pytest.mark.parametrize("model", ["gpt-6-luna", "qwen3.7-plus", "deepseek-v4-flash-0731"])
 def test_native_provider_retains_client_messages_and_tools(model):
     payload = copilot_payload(model)
     captured = []
@@ -184,25 +194,22 @@ def test_native_provider_retains_client_messages_and_tools(model):
 
 
 def test_is_tool_emulation_required():
-    # Emulation required for Qwen, Llama, and DeepSeek when tools present
-    assert is_tool_emulation_required("qwen3-max", {"tools": SAMPLE_TOOLS}) is True
-    assert is_tool_emulation_required("qwen-plus", {"tools": SAMPLE_TOOLS}) is True
-    assert is_tool_emulation_required("llama-4-maverick", {"tools": SAMPLE_TOOLS}) is True
-    assert is_tool_emulation_required("deepseek-v4-flash", {"tools": SAMPLE_TOOLS}) is True
-    assert is_tool_emulation_required("deepSeek-V4-Pro-hkbu", {"tools": SAMPLE_TOOLS}) is True
+    # Every REST v1 chat model accepts native tools.
+    for model in registry.MODELS:
+        if model.kind == "chat" and model.id != GATED:
+            assert is_tool_emulation_required(model.id, {"tools": SAMPLE_TOOLS}) is False
+    # Retired IDs resolve to native successors instead of the old emulation path.
+    assert is_tool_emulation_required("qwen-plus", {"tools": SAMPLE_TOOLS}) is False
 
-    # Not required when tools list is empty or missing
-    assert is_tool_emulation_required("qwen3-max", {"tools": []}) is False
-    assert is_tool_emulation_required("qwen3-max", {}) is False
-
-    # Not required for native tool calling models (Azure OpenAI, Gemini)
-    assert is_tool_emulation_required("gpt-4.1", {"tools": SAMPLE_TOOLS}) is False
-    assert is_tool_emulation_required("gemini-2.5-flash", {"tools": SAMPLE_TOOLS}) is False
+    # A gated model needs emulation only when tools or tool history are present.
+    assert is_tool_emulation_required(GATED, {"tools": SAMPLE_TOOLS}) is True
+    assert is_tool_emulation_required(GATED, {"tools": []}) is False
+    assert is_tool_emulation_required(GATED, {}) is False
 
 
 def test_prepare_emulated_payload():
     payload = {
-        "model": "qwen3-max",
+        "model": GATED,
         "messages": [
             {"role": "user", "content": "What is the weather in Tokyo?"},
             {
@@ -297,7 +304,7 @@ def test_extract_tool_calls():
 
 
 def test_emulated_stream_filter_tool_call():
-    handler = EmulatedToolStreamFilter(SAMPLE_TOOLS, "qwen3-max")
+    handler = EmulatedToolStreamFilter(SAMPLE_TOOLS, GATED)
 
     chunks = [
         'data: {"id": "1", "choices": [{"delta": {"content": "```json\\n"}}]}\n',
@@ -321,7 +328,7 @@ def test_emulated_stream_filter_tool_call():
 
 
 def test_emulated_stream_filter_regular_text():
-    handler = EmulatedToolStreamFilter(SAMPLE_TOOLS, "qwen3-max")
+    handler = EmulatedToolStreamFilter(SAMPLE_TOOLS, GATED)
 
     chunks = [
         'data: {"id": "1", "choices": [{"delta": {"content": "The "}}]}\n',
@@ -343,7 +350,7 @@ def test_emulated_stream_filter_regular_text():
 
 
 def test_emulated_stream_filter_role_and_empty_choices():
-    handler = EmulatedToolStreamFilter(SAMPLE_TOOLS, "qwen3-max")
+    handler = EmulatedToolStreamFilter(SAMPLE_TOOLS, GATED)
 
     chunks = [
         # Chunk 0 has role and empty content

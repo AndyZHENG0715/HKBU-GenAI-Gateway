@@ -20,61 +20,121 @@ export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
   // Standard chat models for client configurations
   const chatModels = [
     {
-      id: 'gpt-5',
-      name: 'GPT-5',
+      id: 'gpt-6-luna',
+      name: 'GPT-6 Luna',
       vendor: 'gpt',
-      maxInputTokens: 1047576,
-      maxOutputTokens: 65536,
+      maxInputTokens: 128000,
+      maxOutputTokens: 16384,
       supportsToolCall: true,
       supportsImages: true,
       supportsReasoning: true,
     },
     {
-      id: 'gpt-5-mini',
-      name: 'GPT-5 mini',
+      id: 'gpt-6.1-sol',
+      name: 'GPT-6.1 Sol',
       vendor: 'gpt',
-      maxInputTokens: 1047576,
-      maxOutputTokens: 65536,
+      maxInputTokens: 128000,
+      maxOutputTokens: 16384,
       supportsToolCall: true,
       supportsImages: true,
       supportsReasoning: true,
     },
     {
-      id: 'gpt-4.1',
-      name: 'GPT-4.1',
+      id: 'gpt-6-astra',
+      name: 'GPT-6 Astra',
       vendor: 'gpt',
-      maxInputTokens: 1047576,
-      maxOutputTokens: 32768,
+      maxInputTokens: 128000,
+      maxOutputTokens: 16384,
+      supportsToolCall: true,
+      supportsImages: true,
+      supportsReasoning: true,
+    },
+    {
+      id: 'gpt-5.6-terra',
+      name: 'GPT-5.6 Terra',
+      vendor: 'gpt',
+      maxInputTokens: 128000,
+      maxOutputTokens: 16384,
+      supportsToolCall: true,
+      supportsImages: true,
+      supportsReasoning: true,
+    },
+    {
+      id: 'gemini-3.1-pro-preview',
+      name: 'Gemini 3.1 Pro Preview',
+      vendor: 'gemini',
+      maxInputTokens: 128000,
+      maxOutputTokens: 16384,
+      supportsToolCall: true,
+      supportsImages: true,
+      supportsReasoning: true,
+    },
+    {
+      id: 'gemini-3.8-flash',
+      name: 'Gemini 3.8 Flash',
+      vendor: 'gemini',
+      maxInputTokens: 128000,
+      maxOutputTokens: 16384,
+      supportsToolCall: true,
+      supportsImages: true,
+      supportsReasoning: true,
+    },
+    {
+      id: 'grok-4.6',
+      name: 'Grok 4.6',
+      vendor: 'grok',
+      maxInputTokens: 128000,
+      maxOutputTokens: 16384,
+      supportsToolCall: true,
+      supportsImages: true,
+      supportsReasoning: true,
+    },
+    {
+      id: 'kimi-k3',
+      name: 'Kimi K3',
+      vendor: 'moonshot',
+      maxInputTokens: 128000,
+      maxOutputTokens: 16384,
       supportsToolCall: true,
       supportsImages: true,
       supportsReasoning: false,
     },
     {
-      id: 'gpt-4.1-mini',
-      name: 'GPT-4.1 mini',
-      vendor: 'gpt',
-      maxInputTokens: 1047576,
-      maxOutputTokens: 32768,
+      id: 'glm-5.2',
+      name: 'GLM-5.2',
+      vendor: 'glm',
+      maxInputTokens: 128000,
+      maxOutputTokens: 16384,
       supportsToolCall: true,
-      supportsImages: true,
-      supportsReasoning: false,
+      supportsImages: false,
+      supportsReasoning: true,
     },
     {
-      id: 'o1',
-      name: 'o1',
-      vendor: 'gpt',
-      maxInputTokens: 200000,
-      maxOutputTokens: 100000,
+      id: 'qwen3.8-max',
+      name: 'Qwen3.8 Max',
+      vendor: 'qwen',
+      maxInputTokens: 128000,
+      maxOutputTokens: 16384,
+      supportsToolCall: true,
+      supportsImages: false,
+      supportsReasoning: true,
+    },
+    {
+      id: 'qwen3.7-plus',
+      name: 'Qwen3.7 Plus',
+      vendor: 'qwen',
+      maxInputTokens: 128000,
+      maxOutputTokens: 16384,
       supportsToolCall: true,
       supportsImages: true,
       supportsReasoning: true,
     },
     {
-      id: 'o3-mini',
-      name: 'o3-mini',
-      vendor: 'gpt',
-      maxInputTokens: 200000,
-      maxOutputTokens: 100000,
+      id: 'deepseek-v4-flash-0731',
+      name: 'DeepSeek V4 Flash',
+      vendor: 'deepseek',
+      maxInputTokens: 128000,
+      maxOutputTokens: 16384,
       supportsToolCall: true,
       supportsImages: false,
       supportsReasoning: true,
@@ -83,71 +143,11 @@ export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
       id: 'deepSeek-V4-Pro-hkbu',
       name: 'DeepSeek V4 Pro',
       vendor: 'deepseek',
-      maxInputTokens: 1000000,
-      maxOutputTokens: 384000,
+      maxInputTokens: 128000,
+      maxOutputTokens: 16384,
       supportsToolCall: true,
       supportsImages: false,
       supportsReasoning: true,
-    },
-    {
-      id: 'deepseek-v4-flash',
-      name: 'DeepSeek V4 Flash',
-      vendor: 'deepseek',
-      maxInputTokens: 1000000,
-      maxOutputTokens: 384000,
-      supportsToolCall: true,
-      supportsImages: false,
-      supportsReasoning: true,
-    },
-    {
-      id: 'gemini-2.5-pro',
-      name: 'Gemini 2.5 Pro',
-      vendor: 'gemini',
-      maxInputTokens: 2000000,
-      maxOutputTokens: 65536,
-      supportsToolCall: true,
-      supportsImages: true,
-      supportsReasoning: true,
-    },
-    {
-      id: 'gemini-2.5-flash',
-      name: 'Gemini 2.5 Flash',
-      vendor: 'gemini',
-      maxInputTokens: 1000000,
-      maxOutputTokens: 65536,
-      supportsToolCall: true,
-      supportsImages: true,
-      supportsReasoning: true,
-    },
-    {
-      id: 'qwen3-max',
-      name: 'Qwen3 Max',
-      vendor: 'qwen',
-      maxInputTokens: 1000000,
-      maxOutputTokens: 65536,
-      supportsToolCall: true,
-      supportsImages: false,
-      supportsReasoning: true,
-    },
-    {
-      id: 'qwen-plus',
-      name: 'Qwen Plus',
-      vendor: 'qwen',
-      maxInputTokens: 131072,
-      maxOutputTokens: 8192,
-      supportsToolCall: true,
-      supportsImages: false,
-      supportsReasoning: true,
-    },
-    {
-      id: 'llama-4-maverick',
-      name: 'Llama 4 Maverick',
-      vendor: 'llama',
-      maxInputTokens: 1000000,
-      maxOutputTokens: 32768,
-      supportsToolCall: true,
-      supportsImages: false,
-      supportsReasoning: false,
     },
   ];
 
@@ -202,7 +202,7 @@ export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
       tabAutocompleteModel: {
         title: 'DeepSeek V4 Flash (Autocomplete)',
         provider: 'openai',
-        model: 'deepseek-v4-flash',
+        model: 'deepseek-v4-flash-0731',
         apiKey: effectiveKey,
         apiBase: baseUrl,
       },
@@ -223,10 +223,10 @@ export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
       apiProvider: 'openai-compatible',
       openAiBaseUrl: baseUrl,
       openAiApiKey: effectiveKey,
-      openAiModelId: 'gpt-4.1',
+      openAiModelId: 'gpt-6-luna',
       openAiCustomModelInfo: {
-        maxTokens: 32768,
-        contextWindow: 1047576,
+        maxTokens: 16384,
+        contextWindow: 128000,
         supportsImages: true,
         supportsComputerUse: false,
       },
@@ -644,7 +644,7 @@ export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
                   </div>
                   <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1">
                     <span className="font-semibold text-slate-500 block">Model ID</span>
-                    <p className="font-mono text-slate-800 dark:text-slate-200">gpt-4.1 / gpt-5 / deepseek-v4-flash</p>
+                    <p className="font-mono text-slate-800 dark:text-slate-200">gpt-6-luna / qwen3.7-plus / deepseek-v4-flash-0731</p>
                   </div>
                 </div>
               </div>
@@ -800,7 +800,7 @@ export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
               <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Step 3: Model</span>
                 <p className="text-xs text-slate-700 dark:text-slate-300">
-                  Select or type any model: <code>gpt-4.1</code>, <code>gpt-5</code>, <code>deepseek-v4-flash</code>.
+                  Select or type any model: <code>gpt-6-luna</code>, <code>qwen3.7-plus</code>, <code>deepseek-v4-flash-0731</code>.
                 </p>
               </div>
             </div>
@@ -835,7 +835,7 @@ export const ToolPresets: React.FC<ToolPresetsProps> = ({ apiKey }) => {
               <button
                 onClick={() =>
                   copyText(
-                    `from openai import OpenAI\n\nclient = OpenAI(\n    base_url="${baseUrl}",\n    api_key="${effectiveKey}",\n)\n\nresponse = client.chat.completions.create(\n    model="gpt-4.1",\n    messages=[{"role": "user", "content": "Hello, HKBU AI!"}],\n)\nprint(response.choices[0].message.content)\n`,
+                    `from openai import OpenAI\n\nclient = OpenAI(\n    base_url="${baseUrl}",\n    api_key="${effectiveKey}",\n)\n\nresponse = client.chat.completions.create(\n    model="gpt-6-luna",\n    messages=[{"role": "user", "content": "Hello, HKBU AI!"}],\n)\nprint(response.choices[0].message.content)\n`,
                     'py-code'
                   )
                 }
@@ -856,7 +856,7 @@ client = OpenAI(
 
 # Call any supported model
 response = client.chat.completions.create(
-    model="gpt-4.1",
+    model="gpt-6-luna",
     messages=[{"role": "user", "content": "Hello, HKBU AI!"}],
 )
 
@@ -875,7 +875,7 @@ print(response.choices[0].message.content)`}
               <button
                 onClick={() =>
                   copyText(
-                    `curl ${baseUrl}/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${effectiveKey}" \\\n  -d '{\n    "model": "gpt-4.1",\n    "messages": [{"role": "user", "content": "Hello"}]\n  }'`,
+                    `curl ${baseUrl}/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${effectiveKey}" \\\n  -d '{\n    "model": "gpt-6-luna",\n    "messages": [{"role": "user", "content": "Hello"}]\n  }'`,
                     'curl-code'
                   )
                 }
@@ -890,7 +890,7 @@ print(response.choices[0].message.content)`}
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${effectiveKey}" \\
   -d '{
-    "model": "gpt-4.1",
+    "model": "gpt-6-luna",
     "messages": [{"role": "user", "content": "Hello"}]
   }'`}
             </pre>
