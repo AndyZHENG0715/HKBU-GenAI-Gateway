@@ -68,8 +68,8 @@ Last updated: **2026-10-20**. Read [the latest handoff](#6-latest-handoff-2026-1
 ## 3. Key Decisions & Rationale
 
 - **Self-Generating Encryption Key**: If `HKBU_GATEWAY_ENCRYPTION_KEY` is not provided in environment, `credentials.py` generates a 32-byte Fernet key and persists it to `hkbu_gateway.key` next to the database file. This ensures seamless local zero-config runs without manual `.env` file setup.
-- **Edge Protocol Normalization for Agents**: Coding agents like VS Code Copilot and Cline send Anthropic-style nested arrays (`[{"type": "tool_result", ...}]`) and strict-unsupported params (`temperature` on `o3-mini`). Rather than requiring agents to modify their internal schemas, the gateway acts as an edge protocol stabilizer that transparently normalizes requests before proxying to HKBU.
-- **Prompt & XML Emulation for Gated Tools**: Upstream HKBU endpoints for DeepSeek, Qwen, and Llama do not natively expose tool parameter schemas; the gateway injects standard tool schemas into system instructions and parses both JSON blocks and XML tags (`<read_file>`, `<Explore>`, etc.) on the fly.
+- **Edge Protocol Normalization for Agents**: Coding agents like VS Code Copilot, Cline and WorkBuddy send Anthropic-style nested arrays (`[{"type": "tool_result", ...}]`), parameters a model rejects (`temperature` on the GPT family), and response fields echoed back into history. Rather than requiring agents to change their schemas, the gateway normalizes requests to the REST v1 capability table before proxying to HKBU.
+- **Thin Layer over REST v1**: HKBU now handles provider differences itself, so the gateway passes native tools and history through and keeps only compatibility fixes, model metadata and the portal. Tool emulation stays in `tools.py`, dormant, in case a future model gates native tools again.
 - **Frontend Build Mirroring**: `frontend/package.json` builds to `../static/index.html` and automatically copies to `../static/hkbuapi4agent.html` to support legacy paths and direct bookmarking.
 
 ## 4. Current Environment & Active Resources

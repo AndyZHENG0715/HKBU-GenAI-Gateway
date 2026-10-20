@@ -18,7 +18,7 @@ Students and researchers can convert their university platform key into standard
   - **🎛️ Capability-Aware Parameters**: Strips `temperature` for models that reject it, keeps `reasoning_effort` within each model's allowed values, and raises `max_tokens` to the upstream minimum of 16.
 - **🛡️ Edge Protocol Stabilization for Coding Agents**:
   - Automatically sanitizes complex multi-turn message arrays (`messages[].content` containing Anthropic-style `tool_result` arrays) into plain strings or compliant OpenAI format, resolving upstream NestJS class-validator 400 errors.
-  - Transparently strips unsupported parameters (`temperature`, `top_p`, penalties) when using Azure OpenAI reasoning models (`o1`, `o3-mini`, `gpt-5`).
+  - Strips response-only fields that agent clients echo back in history (`reasoning_content`, `tool_calls[].index`), which HKBU REST v1 rejects with HTTP 400.
 - **🔍 Universal Model Discovery & Capabilities**:
   - Exposes `/v1/models`, `/models`, `/v1/model`, `/model`, OpenRouter-compatible `/api/v1/models`, and LiteLLM-compatible `/v1/model/info`.
   - Comprehensive model capabilities metadata following [models.dev](https://models.dev) and Tencent WorkBuddy schemas (`supportsToolCall`, `supportsReasoning`, `supportsVision`, `contextWindow`, `maxTokens`, `tool_call`, `reasoning`, `attachment`, `limit`, `capabilities`).
