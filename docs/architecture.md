@@ -1,6 +1,8 @@
 # Architecture Specification
 
-HKBU GenAI Gateway is a lightweight, zero-configuration, OpenAI-compatible proxy and self-service developer portal for the Hong Kong Baptist University (HKBU) GenAI Platform (`https://genai.hkbu.edu.hk/api/v0/rest`).
+> **Note (2026-10-20):** HKBU moved to the provider-neutral REST v1 API (`https://genai.hkbu.edu.hk/api/v1`). Sections below that describe v0 deployment routes, history transcript encoding, tool emulation for Qwen/DeepSeek/Llama or the old model IDs are historical. For current upstream behaviour see AGENTS.md §1 and [HANDOFF.md §6](../HANDOFF.md#6-latest-handoff-2026-10-20-hkbu-rest-v1-migration).
+
+HKBU GenAI Gateway is a lightweight, zero-configuration, OpenAI-compatible proxy and self-service developer portal for the Hong Kong Baptist University (HKBU) GenAI Platform (`https://genai.hkbu.edu.hk/api/v1`).
 
 This document describes the end-to-end system architecture, internal pipelines, upstream adaptation strategies, security model, and streaming invariants.
 

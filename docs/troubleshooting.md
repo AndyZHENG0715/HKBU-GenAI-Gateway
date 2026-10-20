@@ -1,5 +1,7 @@
 # Troubleshooting Guide
 
+> **Note (2026-10-20):** HKBU moved to the provider-neutral REST v1 API (`https://genai.hkbu.edu.hk/api/v1`). Sections below that describe v0 deployment routes, history transcript encoding, tool emulation for Qwen/DeepSeek/Llama or the old model IDs are historical. For current upstream behaviour see AGENTS.md §1 and [HANDOFF.md §6](../HANDOFF.md#6-latest-handoff-2026-10-20-hkbu-rest-v1-migration).
+
 This guide provides root-cause explanations and practical solutions for common operational issues, upstream platform quirks, and client integration challenges when using the HKBU GenAI Gateway.
 
 ---
