@@ -7,6 +7,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-20
+
 ### Changed
 - **HKBU REST v1 migration**: the upstream now defaults to `https://genai.hkbu.edu.hk/api/v1` with `Authorization: Bearer`, the model in the request body, and no `api-version`. Set `HKBU_UPSTREAM_PATH_STYLE=openai/deployments` to use the legacy v0 routes.
 - Replaced the model catalog with the 15 canonical REST v1 models and their published capabilities (vision, temperature, parallel tools, JSON output, reasoning effort values). Retired IDs map to their successors instead of being silently answered by `gpt-6-luna` upstream.

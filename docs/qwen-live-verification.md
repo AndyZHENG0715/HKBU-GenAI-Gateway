@@ -1,5 +1,7 @@
 # HKBU Qwen live verification — 2026-09-30
 
+> **Note (2026-10-20):** HKBU moved to the provider-neutral REST v1 API (`https://genai.hkbu.edu.hk/api/v1`). Sections below that describe v0 deployment routes, history transcript encoding, tool emulation for Qwen/DeepSeek/Llama or the old model IDs are historical. For current upstream behaviour see AGENTS.md §1 and [HANDOFF.md §6](../HANDOFF.md#6-latest-handoff-2026-10-20-hkbu-rest-v1-migration).
+
 Endpoint: `https://genai.hkbu.edu.hk/api/v0/rest/openai/deployments/{model}/chat/completions?api-version=v1`.
 Models: `qwen-plus`, `qwen3-max`. Authentication: `api-key`.
 Credentials were decrypted from the local credential store in memory, never printed or included in evidence. The database was opened read-only. All test messages were synthetic, with one small tool definition in the tool-prompt comparisons; no original Copilot request was available.

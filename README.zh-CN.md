@@ -13,9 +13,9 @@
 - **🔑 1 键密钥转换**：校验浸会大学平台 Key，生成与任何 OpenAI SDK 或第三方客户端兼容的标准 `Bearer` Token。
 - **🛠️ 全模型通用工具调用 (Function Calling)**：
   - 流式（SSE）与非流式全模式支持标准 OpenAI `tools: [...]` 与 `tool_calls`。
-  - Azure GPT 与 Google Gemini 原生直通。
-  - 针对 DeepSeek（`deepSeek-V4-Pro-hkbu`、`deepseek-v4-flash`）、阿里通义千问（`qwen3-max`、`qwen-plus`）与谷歌 Vertex AI Llama（`llama-4-maverick`）内置**基于提示词的工具模拟适配器**（`tools.py`），无缝将客户端工具 Schema 与模型输出（支持 JSON 块与 `<read_file>` 等 XML 标签）转换为标准 OpenAI `tool_calls`。
-  - **🧠 多轮历史记忆恢复**：自动将非 Azure 模型的历史对话压缩封装为结构化转录，彻底攻克上游适配器丢弃多轮历史的问题。
+  - HKBU REST v1 上的所有模型（GPT、Gemini、Grok、Kimi、GLM、通义千问、DeepSeek）均原生直通。
+  - 已下架的旧模型 ID（`gpt-4.1`、`qwen-plus` 等）会自动映射到对应的新模型，旧配置无需修改。
+  - **🎛️ 按模型能力修正参数**：对不支持的模型去掉 `temperature`，把 `reasoning_effort` 限定在该模型允许的取值内，并把 `max_tokens` 提高到上游下限 16。
 - **🛡️ 面向 Coding Agent 的边缘协议平抑器**：
   - 自动规整并清洗客户端多轮对话中的复杂内容数组（如 VS Code Copilot/Cline 的 `tool_result` 数组），展平为字符串或合规格式，避免上游 NestJS class-validator 400 校验错误。
   - 透明剔除 Azure OpenAI 推理模型（`o1`、`o3-mini`、`gpt-5`）不支持的超参数（`temperature`、`top_p` 等）。
@@ -122,7 +122,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="gpt-4.1",  # 或 deepseek-v4-flash, gemini-2.5-flash 等
+    model="gpt-6-luna",  # 或 qwen3.7-plus, deepseek-v4-flash-0731, gemini-3.8-flash 等
     messages=[
         {"role": "user", "content": "用一句话解释什么是量子计算。"}
     ],
@@ -138,9 +138,9 @@ print(response.choices[0].message.content)
 | :--- | :--- | :--- |
 | `HKBU_DATABASE_PATH` | SQLite 数据库文件存放路径 | `hkbu_gateway.db` |
 | `HKBU_GATEWAY_ENCRYPTION_KEY` | 用于凭据加密的 32 字节 Fernet 密钥 | 自动生成至 `hkbu_gateway.key` |
-| `HKBU_UPSTREAM_BASE_URL` | 香港浸会大学 GenAI 接口上游地址 | `https://genai.hkbu.edu.hk/api/v0/rest` |
-| `HKBU_UPSTREAM_AUTH_HEADER` / `HKBU_API_KEY_HEADER` | 上游接口预期的 Header 鉴权字段名 | `api-key` |
-| `HKBU_UPSTREAM_PATH_STYLE` | 上游路由分发策略 (`direct` 或 `model_param`) | `direct` |
+| `HKBU_UPSTREAM_BASE_URL` | 香港浸会大学 GenAI 接口上游地址（旧的 v0 地址会自动改用 v1） | `https://genai.hkbu.edu.hk/api/v1` |
+| `HKBU_UPSTREAM_AUTH_HEADER` / `HKBU_API_KEY_HEADER` | 上游 key 使用的 Header（`Authorization` 时发送 `Bearer <key>`） | `Authorization` |
+| `HKBU_UPSTREAM_PATH_STYLE` | REST v1 留空；旧版 v0 路由为 `openai/deployments` | 空 |
 
 ---
 

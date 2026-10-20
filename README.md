@@ -138,7 +138,7 @@ print(response.choices[0].message.content)
 | :--- | :--- | :--- |
 | `HKBU_DATABASE_PATH` | Path to SQLite database file | `hkbu_gateway.db` |
 | `HKBU_GATEWAY_ENCRYPTION_KEY` | 32-byte Fernet key for key encryption | Auto-generated into `hkbu_gateway.key` |
-| `HKBU_UPSTREAM_BASE_URL` | Upstream HKBU GenAI endpoint | `https://genai.hkbu.edu.hk/api/v1` |
+| `HKBU_UPSTREAM_BASE_URL` | Upstream HKBU GenAI endpoint (the retired v0 address is moved to v1 automatically) | `https://genai.hkbu.edu.hk/api/v1` |
 | `HKBU_UPSTREAM_AUTH_HEADER` / `HKBU_API_KEY_HEADER` | Header used for the upstream key (`Authorization` sends `Bearer <key>`) | `Authorization` |
 | `HKBU_UPSTREAM_PATH_STYLE` | Empty for REST v1; `openai/deployments` for the legacy v0 routes | empty |
 
