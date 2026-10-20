@@ -1,5 +1,7 @@
 # HKBU GenAI Gateway - Model Audit Matrix
 
+> **Historical (pre-2026-10 v0 platform).** These model IDs were retired by the HKBU REST v1 update; see HANDOFF.md §6 for current live-verified behaviour.
+
 Audit completed: 2026-09-30 19:34:49
 
 **Overall Result:** 15 / 15 Models Fully Operational

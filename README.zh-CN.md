@@ -18,7 +18,7 @@
   - **🎛️ 按模型能力修正参数**：对不支持的模型去掉 `temperature`，把 `reasoning_effort` 限定在该模型允许的取值内，并把 `max_tokens` 提高到上游下限 16。
 - **🛡️ 面向 Coding Agent 的边缘协议平抑器**：
   - 自动规整并清洗客户端多轮对话中的复杂内容数组（如 VS Code Copilot/Cline 的 `tool_result` 数组），展平为字符串或合规格式，避免上游 NestJS class-validator 400 校验错误。
-  - 透明剔除 Azure OpenAI 推理模型（`o1`、`o3-mini`、`gpt-5`）不支持的超参数（`temperature`、`top_p` 等）。
+  - 自动清理 Agent 客户端回传到历史里的响应专用字段（`reasoning_content`、`tool_calls[].index`），避免 HKBU REST v1 返回 400。
 - **🔍 通用模型发现与规格元数据**：
   - 提供 `/v1/models`、`/models`、`/v1/model`、`/model`、兼容 OpenRouter 的 `/api/v1/models` 以及兼容 LiteLLM 的 `/v1/model/info`。
   - 遵循 [models.dev](https://models.dev) 与腾讯工蜂（WorkBuddy）规格的模型能力完整元数据（`supportsToolCall`、`supportsReasoning`、`supportsVision`、`contextWindow`、`maxTokens`、`tool_call`、`reasoning`、`attachment`、`limit`、`capabilities`）。

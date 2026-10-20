@@ -18,7 +18,7 @@
   - **🎛️ 按模型能力修正參數**：對不支援的模型移除 `temperature`，把 `reasoning_effort` 限定在該模型允許的值內，並把 `max_tokens` 提高到上游下限 16。
 - **🛡️ 面向 Coding Agent 的邊緣協議平抑器**：
   - 自動規整並清洗客戶端多輪對話中的複雜內容陣列（如 VS Code Copilot/Cline 的 `tool_result` 陣列），展平為字串或合規格式，避免上游 NestJS class-validator 400 校驗錯誤。
-  - 透明剔除 Azure OpenAI 推理模型（`o1`、`o3-mini`、`gpt-5`）不支援的超參數（`temperature`、`top_p` 等）。
+  - 自動清理 Agent 客戶端回傳到歷史中的回應專用欄位（`reasoning_content`、`tool_calls[].index`），避免 HKBU REST v1 回傳 400。
 - **🔍 通用模型探索與規格元數據**：
   - 提供 `/v1/models`、`/models`、`/v1/model`、`/model`、相容 OpenRouter 的 `/api/v1/models` 以及相容 LiteLLM 的 `/v1/model/info`。
   - 遵循 [models.dev](https://models.dev) 與騰訊工蜂（WorkBuddy）規格的模型能力完整元數據（`supportsToolCall`、`supportsReasoning`、`supportsVision`、`contextWindow`、`maxTokens`、`tool_call`、`reasoning`、`attachment`、`limit`、`capabilities`）。
