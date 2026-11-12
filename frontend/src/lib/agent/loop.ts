@@ -134,32 +134,42 @@ export async function runAgentLoop({
         }
 
         const rawErrMsg = stepError.message || String(stepError);
+        const isSizeOrLengthError = /413|payload too large|context length|context_length_exceeded|maximum context/i.test(rawErrMsg);
+        const isAuthError = /401|invalid.*key|unauthorized/i.test(rawErrMsg);
 
-        // Generic error recovery: If step > 1 and we have retries left, desensitize tool outputs & inject error context
-        if (stepRetries < MAX_STEP_RETRIES && currentIteration > 1) {
+        // Sanitize tool outputs if present to reduce payload
+        let sanitizedAnyTool = false;
+        for (let i = conversationMessages.length - 1; i >= 0; i--) {
+          const msg = conversationMessages[i];
+          if (msg.role === 'tool' && typeof msg.content === 'string' && msg.content.length > 200) {
+            msg.content = `[Tool output desensitized: content (~${msg.content.length} chars) removed after platform rejection. Details cleared to allow recovery.]`;
+            sanitizedAnyTool = true;
+          }
+        }
+
+        // Determine if retry is possible and productive
+        let canRetry = stepRetries < MAX_STEP_RETRIES && !isAuthError;
+        // Avoid retrying unchanged oversized requests if no reducible content was found
+        if (isSizeOrLengthError && !sanitizedAnyTool) {
+          canRetry = false;
+        }
+
+        if (canRetry) {
           stepRetries++;
           onStepStart?.(currentIteration);
 
-          let sanitizedAnyTool = false;
-          for (let i = conversationMessages.length - 1; i >= 0; i--) {
-            const msg = conversationMessages[i];
-            if (msg.role === 'tool' && typeof msg.content === 'string') {
-              const origLen = msg.content.length;
-              if (origLen > 300) {
-                msg.content = `[Tool output desensitized: content (~${origLen} chars) triggered an upstream error (${rawErrMsg}). Details cleared to allow recovery.]`;
-                sanitizedAnyTool = true;
-              }
-            }
-          }
+          // Keep error as tightly sanitized diagnostic data, not raw instructions
+          const safeSummary = rawErrMsg
+            .replace(/[\r\n\x00-\x1f`]/g, ' ')
+            .trim()
+            .slice(0, 120) || 'upstream platform error';
 
           conversationMessages.push({
             role: 'system',
             content:
-              `[System Notice: The upstream model platform rejected the previous request with error: "${rawErrMsg}". ` +
-              (sanitizedAnyTool
-                ? 'Large or sensitive tool outputs in your history have been desensitized. '
-                : '') +
-              'Please adjust your reasoning, avoid repeating the action that triggered this error, and conclude your answer or explain the platform restriction to the user.]',
+              `[Diagnostic context: The previous platform request failed (${safeSummary}). ` +
+              (sanitizedAnyTool ? 'Oversized tool outputs have been truncated to prevent further rejections. ' : '') +
+              'Please adjust your strategy, avoid repeating the failed operation, and conclude or explain the limitation to the user.]',
           });
 
           await new Promise((r) => setTimeout(r, 800));

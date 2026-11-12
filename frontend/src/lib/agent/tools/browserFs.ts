@@ -177,16 +177,46 @@ export const readFileTool: AgentTool = {
         };
       }
 
-      const slice = allLines.slice(offset - 1, offset - 1 + maxLines);
-      let output = slice.join('\n');
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder('utf-8', { fatal: false });
+      const MAX_TOTAL_BYTES = 25000;
+      const NOTICE_BUDGET_BYTES = 200;
+      const CONTENT_BUDGET_BYTES = MAX_TOTAL_BYTES - NOTICE_BUDGET_BYTES;
 
-      const MAX_BYTES = 25000;
-      if (output.length > MAX_BYTES) {
-        output = output.slice(0, MAX_BYTES) + `\n\n[... Truncated at ${MAX_BYTES} characters to prevent firewall payload rejection ...]`;
+      const endLineIdx = Math.min(totalLines, offset - 1 + maxLines);
+      const deliveredLines: string[] = [];
+      let currentBytes = 0;
+      let linesIncluded = 0;
+      let firstLineTruncatedInBytes = false;
+
+      for (let i = offset - 1; i < endLineIdx; i++) {
+        const line = allLines[i];
+        const lineBytes = encoder.encode((linesIncluded > 0 ? '\n' : '') + line).length;
+
+        if (currentBytes + lineBytes > CONTENT_BUDGET_BYTES) {
+          if (linesIncluded === 0) {
+            // Edge case: single line exceeds the entire byte budget
+            const rawLineBytes = encoder.encode(line);
+            const sliced = decoder.decode(rawLineBytes.subarray(0, CONTENT_BUDGET_BYTES));
+            deliveredLines.push(sliced);
+            linesIncluded = 1;
+            firstLineTruncatedInBytes = true;
+          }
+          break;
+        }
+
+        deliveredLines.push(line);
+        currentBytes += lineBytes;
+        linesIncluded++;
       }
 
-      if (offset + slice.length <= totalLines) {
-        output += `\n\n[... Truncated: showing lines ${offset}-${offset + slice.length - 1} of ${totalLines}. Use read_local_file with offset=${offset + slice.length} to read the next lines ...]`;
+      const nextOffset = offset + linesIncluded;
+      let output = deliveredLines.join('\n');
+
+      if (firstLineTruncatedInBytes) {
+        output += `\n\n[... Truncated: line ${offset} exceeds the 25KB UTF-8 buffer limit ...]`;
+      } else if (nextOffset <= totalLines) {
+        output += `\n\n[... Truncated: showing lines ${offset}-${nextOffset - 1} of ${totalLines}. Use read_local_file with offset=${nextOffset} to read next lines ...]`;
       }
 
       return { output };

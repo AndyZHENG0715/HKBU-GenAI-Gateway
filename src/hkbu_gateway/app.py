@@ -311,31 +311,33 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
             sanitized_parts = []
             for item in content:
                 if isinstance(item, str):
-                    sanitized_parts.append({"type": "text", "text": item if item.strip() else " "})
+                    cleaned = item.replace("\x00", "")
+                    sanitized_parts.append({"type": "text", "text": cleaned if cleaned.strip() else " "})
                 elif isinstance(item, dict):
                     itype = item.get("type")
                     if itype == "image_url":
                         sanitized_parts.append(item)
                     elif itype == "text":
-                        text_val = item.get("text") or item.get("value") or ""
-                        sanitized_parts.append({"type": "text", "text": str(text_val) if str(text_val).strip() else " "})
+                        text_val = str(item.get("text") or item.get("value") or "").replace("\x00", "")
+                        sanitized_parts.append({"type": "text", "text": text_val if text_val.strip() else " "})
                     else:
-                        text_val = (
+                        text_val = str(
                             item.get("text")
                             or item.get("value")
                             or item.get("content")
                             or json.dumps(item, ensure_ascii=False)
-                        )
-                        sanitized_parts.append({"type": "text", "text": str(text_val) if str(text_val).strip() else " "})
+                        ).replace("\x00", "")
+                        sanitized_parts.append({"type": "text", "text": text_val if text_val.strip() else " "})
                 else:
-                    sanitized_parts.append({"type": "text", "text": str(item) if str(item).strip() else " "})
+                    cleaned = str(item).replace("\x00", "")
+                    sanitized_parts.append({"type": "text", "text": cleaned if cleaned.strip() else " "})
             msg["content"] = sanitized_parts
         else:
             # No images: flatten parts into a single string for maximum upstream compatibility
             text_pieces = []
             for item in content:
                 if isinstance(item, str):
-                    text_pieces.append(item)
+                    text_pieces.append(item.replace("\x00", ""))
                 elif isinstance(item, dict):
                     text_val = (
                         item.get("text")
@@ -345,10 +347,10 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
                     )
                     if not text_val and item.get("type") not in ("text", "image_url"):
                         text_val = json.dumps(item, ensure_ascii=False)
-                    text_pieces.append(str(text_val))
+                    text_pieces.append(str(text_val).replace("\x00", ""))
                 else:
-                    text_pieces.append(str(item))
-            joined = "".join(text_pieces).replace("\x00", "")
+                    text_pieces.append(str(item).replace("\x00", ""))
+            joined = "".join(text_pieces)
             if not joined.strip():
                 msg["content"] = _default_empty_content(role, has_tool_calls)
             else:
@@ -366,7 +368,7 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
                 or content.get("content")
                 or json.dumps(content, ensure_ascii=False)
             )
-            val_str = str(text_val)
+            val_str = str(text_val).replace("\x00", "")
             if not val_str.strip():
                 msg["content"] = _default_empty_content(role, has_tool_calls)
             else:
@@ -374,7 +376,7 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
         return
 
     # 5. Fallback for primitives
-    primitive_str = str(content)
+    primitive_str = str(content).replace("\x00", "")
     if not primitive_str.strip():
         msg["content"] = _default_empty_content(role, has_tool_calls)
     else:

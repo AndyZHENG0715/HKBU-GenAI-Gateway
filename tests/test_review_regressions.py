@@ -83,6 +83,27 @@ def test_sanitize_message_content_strips_null_bytes():
     assert "\x00" not in msg["content"]
 
 
+def test_sanitize_message_content_strips_null_bytes_multimodal():
+    from hkbu_gateway.app import _sanitize_message_content
+
+    msg = {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "Describe\x00 this\x00 image"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,123"}},
+            "extra\x00text",
+        ],
+    }
+    _sanitize_message_content(msg)
+    assert isinstance(msg["content"], list)
+    assert msg["content"][0] == {"type": "text", "text": "Describe this image"}
+    assert msg["content"][1] == {"type": "image_url", "image_url": {"url": "data:image/png;base64,123"}}
+    assert msg["content"][2] == {"type": "text", "text": "extratext"}
+    for part in msg["content"]:
+        if part.get("type") == "text":
+            assert "\x00" not in part["text"]
+
+
 def test_upstream_403_html_in_stream_yields_cleaned_message():
     from hkbu_gateway.providers import HKBUProvider
     from hkbu_gateway.config import Settings
