@@ -118,11 +118,14 @@ export const readFileTool: AgentTool = {
         description: 'Relative path of the file to read (e.g. "src/index.mjs", "package.json").',
       },
       max_lines: {
-        type: 'number',
+        type: 'integer',
+        minimum: 1,
+        maximum: 1000,
         description: 'Maximum lines to read (default 300, max 1000). Use to avoid firewall payload limits on large files.',
       },
       offset: {
-        type: 'number',
+        type: 'integer',
+        minimum: 1,
         description: '1-based line offset to start reading from (default 1).',
       },
     },
@@ -168,8 +171,12 @@ export const readFileTool: AgentTool = {
       const allLines = cleanText.split(/\r?\n/);
       const totalLines = allLines.length;
 
-      const offset = Math.max(1, Number(args.offset) || 1);
-      const maxLines = Math.min(Math.max(1, Number(args.max_lines) || 300), 1000);
+      let offset = Math.floor(Number(args.offset));
+      if (!Number.isFinite(offset) || offset < 1) offset = 1;
+
+      let maxLines = Math.floor(Number(args.max_lines));
+      if (!Number.isFinite(maxLines) || maxLines < 1) maxLines = 300;
+      maxLines = Math.min(maxLines, 1000);
 
       if (offset > totalLines) {
         return {

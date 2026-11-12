@@ -90,7 +90,7 @@ def test_sanitize_message_content_strips_null_bytes_multimodal():
         "role": "user",
         "content": [
             {"type": "text", "text": "Describe\x00 this\x00 image"},
-            {"type": "image_url", "image_url": {"url": "data:image/png;base64,123"}},
+            {"type": "image_url", "image_url": {"url": "data:image/png\x00;base64,123\x00"}},
             "extra\x00text",
         ],
     }
@@ -102,6 +102,8 @@ def test_sanitize_message_content_strips_null_bytes_multimodal():
     for part in msg["content"]:
         if part.get("type") == "text":
             assert "\x00" not in part["text"]
+        elif part.get("type") == "image_url":
+            assert "\x00" not in part["image_url"]["url"]
 
 
 def test_upstream_403_html_in_stream_yields_cleaned_message():

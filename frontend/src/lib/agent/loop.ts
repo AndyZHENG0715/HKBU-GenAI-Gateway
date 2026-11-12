@@ -135,15 +135,32 @@ export async function runAgentLoop({
 
         const rawErrMsg = stepError.message || String(stepError);
         const isSizeOrLengthError = /413|payload too large|context length|context_length_exceeded|maximum context/i.test(rawErrMsg);
+        const isWafOrPolicyError = /403|access denied|firewall|waf|security policy|forbidden/i.test(rawErrMsg);
+        const isTransientError = /429|500|502|503|504|timeout|rate limit|temporarily unavailable/i.test(rawErrMsg);
         const isAuthError = /401|invalid.*key|unauthorized/i.test(rawErrMsg);
 
-        // Sanitize tool outputs if present to reduce payload
+        // Allow-listed category for diagnostic notice - strictly avoids prompt injection from raw upstream errors
+        let errorCategory = 'unknown_platform_error';
+        if (isSizeOrLengthError) {
+          errorCategory = 'payload_size_or_context_limit';
+        } else if (isWafOrPolicyError) {
+          errorCategory = 'security_policy_or_waf_rejection';
+        } else if (isTransientError) {
+          errorCategory = 'transient_service_unavailable';
+        } else if (isAuthError) {
+          errorCategory = 'authentication_failure';
+        }
+
+        // Restrict redaction to payload/WAF/context-length failures only (and only the implicated tool output)
         let sanitizedAnyTool = false;
-        for (let i = conversationMessages.length - 1; i >= 0; i--) {
-          const msg = conversationMessages[i];
-          if (msg.role === 'tool' && typeof msg.content === 'string' && msg.content.length > 200) {
-            msg.content = `[Tool output desensitized: content (~${msg.content.length} chars) removed after platform rejection. Details cleared to allow recovery.]`;
-            sanitizedAnyTool = true;
+        if (isSizeOrLengthError || isWafOrPolicyError) {
+          for (let i = conversationMessages.length - 1; i >= 0; i--) {
+            const msg = conversationMessages[i];
+            if (msg.role === 'tool' && typeof msg.content === 'string' && msg.content.length > 200) {
+              msg.content = `[Tool output desensitized: content (~${msg.content.length} chars) removed after ${errorCategory}. Details cleared to allow recovery.]`;
+              sanitizedAnyTool = true;
+              break; // Implicated latest tool output
+            }
           }
         }
 
@@ -158,18 +175,13 @@ export async function runAgentLoop({
           stepRetries++;
           onStepStart?.(currentIteration);
 
-          // Keep error as tightly sanitized diagnostic data, not raw instructions
-          const safeSummary = rawErrMsg
-            .replace(/[\r\n\x00-\x1f`]/g, ' ')
-            .trim()
-            .slice(0, 120) || 'upstream platform error';
-
+          // Use strictly allow-listed category rather than raw text to prevent prompt injection
           conversationMessages.push({
             role: 'system',
             content:
-              `[Diagnostic context: The previous platform request failed (${safeSummary}). ` +
-              (sanitizedAnyTool ? 'Oversized tool outputs have been truncated to prevent further rejections. ' : '') +
-              'Please adjust your strategy, avoid repeating the failed operation, and conclude or explain the limitation to the user.]',
+              `[Diagnostic context: The previous platform request failed with category "${errorCategory}". ` +
+              (sanitizedAnyTool ? 'Oversized tool output has been desensitized to prevent further rejections. ' : '') +
+              'Please adjust your reasoning, avoid repeating the action that triggered this error, and conclude your answer or explain the platform restriction to the user.]',
           });
 
           await new Promise((r) => setTimeout(r, 800));

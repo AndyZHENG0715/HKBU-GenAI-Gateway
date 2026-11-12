@@ -316,7 +316,14 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
                 elif isinstance(item, dict):
                     itype = item.get("type")
                     if itype == "image_url":
-                        sanitized_parts.append(item)
+                        img_copy = dict(item)
+                        raw_iu = img_copy.get("image_url")
+                        if isinstance(raw_iu, dict):
+                            u = str(raw_iu.get("url") or "").replace("\x00", "")
+                            img_copy["image_url"] = dict(raw_iu, url=u)
+                        elif isinstance(raw_iu, str):
+                            img_copy["image_url"] = raw_iu.replace("\x00", "")
+                        sanitized_parts.append(img_copy)
                     elif itype == "text":
                         text_val = str(item.get("text") or item.get("value") or "").replace("\x00", "")
                         sanitized_parts.append({"type": "text", "text": text_val if text_val.strip() else " "})
@@ -360,7 +367,14 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
     # 4. Dict content
     if isinstance(content, dict):
         if content.get("type") == "image_url":
-            msg["content"] = [content]
+            img_copy = dict(content)
+            raw_iu = img_copy.get("image_url")
+            if isinstance(raw_iu, dict):
+                u = str(raw_iu.get("url") or "").replace("\x00", "")
+                img_copy["image_url"] = dict(raw_iu, url=u)
+            elif isinstance(raw_iu, str):
+                img_copy["image_url"] = raw_iu.replace("\x00", "")
+            msg["content"] = [img_copy]
         else:
             text_val = (
                 content.get("text")
