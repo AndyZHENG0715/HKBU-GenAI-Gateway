@@ -2,11 +2,11 @@
 
 Durable state summary and context handover for AI coding agents and developers.
 
-Last updated: **2026-10-20**. Read [the latest handoff](#6-latest-handoff-2026-10-20-hkbu-rest-v1-migration) before changing upstream routing, the model catalog, or request preprocessing.
+Last updated: **2026-11-12**. Read [the latest handoff](#6-latest-handoff-2026-10-20-hkbu-rest-v1-migration) before changing upstream routing, the model catalog, or request preprocessing.
 
 ## 1. Project State
 
-- **Current Version**: `2.1.0` (HKBU REST v1 migration), deployed to `https://byok.aitutor.ink`.
+- **Current Version**: `2.1.1` (HKBU WAF error normalization, bounded file inspection, and resilient agent self-healing), deployed to `https://byok.aitutor.ink`.
 - **Active Branch**: `main`. Merges to `main` auto-deploy to the production server (Alibaba Cloud ECS); there is no CI.
 - **Test Status**: 122 passing in the latest full run (`PYTHONPATH=src pytest`); 0 failures.
 - **Frontend Status**: Built cleanly with Vite (`npm run build` targeting `static/index.html` and `static/hkbuapi4agent.html`).

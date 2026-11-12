@@ -7,6 +7,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-11-12
+
 ### Added
 - **Resilient Agent Loop Self-Healing & Generic Soft Landing (`frontend/src/lib/agent/loop.ts`)**:
   - Implemented generic recovery when upstream returns payload size errors (413 / context window limits), campus firewall / WAF blocks (403 Access Denied), or transient gateway failures (500, 502, 503, 504, timeout).
