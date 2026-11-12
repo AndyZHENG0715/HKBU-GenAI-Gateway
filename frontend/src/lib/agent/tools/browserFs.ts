@@ -108,14 +108,22 @@ export const readFileTool: AgentTool = {
   name: 'read_local_file',
   displayName: 'Read Local File',
   description:
-    'Read the text content of a file from the user selected local directory.',
+    'Read the text content of a file from the user selected local directory. Supports optional line offset and line limit for safe inspection of large code files.',
   category: 'filesystem',
   parameters: {
     type: 'object',
     properties: {
       path: {
         type: 'string',
-        description: 'Relative path of the file to read (e.g. "src/index.ts", "package.json").',
+        description: 'Relative path of the file to read (e.g. "src/index.mjs", "package.json").',
+      },
+      max_lines: {
+        type: 'number',
+        description: 'Maximum lines to read (default 300, max 1000). Use to avoid firewall payload limits on large files.',
+      },
+      offset: {
+        type: 'number',
+        description: '1-based line offset to start reading from (default 1).',
       },
     },
     required: ['path'],
@@ -132,15 +140,56 @@ export const readFileTool: AgentTool = {
     const relPath = String(args.path || '').trim();
     if (!relPath) return { output: '', error: 'Missing path argument.' };
 
+    const isBinaryExt = /\.(png|jpe?g|gif|webp|zip|tar|gz|wasm|bin|ico|db|sqlite|pyc|pdf|exe|dll|so)$/i.test(relPath);
+    if (isBinaryExt) {
+      return {
+        output: '',
+        error: `Cannot read binary file "${relPath}" as text. Please select a text or code file.`,
+      };
+    }
+
     try {
       const resolved = await resolveSubHandle(currentDirHandle, relPath, false);
       if (!resolved) return { output: '', error: 'Invalid path.' };
 
       const fileHandle = await resolved.parent.getFileHandle(resolved.name, { create: false });
       const file = await fileHandle.getFile();
-      const content = await file.text();
 
-      return { output: content };
+      // Guard: do not read oversized single files (> 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        return {
+          output: '',
+          error: `File "${relPath}" is too large (${Math.round(file.size / 1024 / 1024)}MB). Maximum allowed is 5MB.`,
+        };
+      }
+
+      const raw = await file.text();
+      const cleanText = raw.replace(/\0/g, '');
+      const allLines = cleanText.split(/\r?\n/);
+      const totalLines = allLines.length;
+
+      const offset = Math.max(1, Number(args.offset) || 1);
+      const maxLines = Math.min(Math.max(1, Number(args.max_lines) || 300), 1000);
+
+      if (offset > totalLines) {
+        return {
+          output: `(File "${relPath}" has ${totalLines} lines; offset ${offset} is past end of file)`,
+        };
+      }
+
+      const slice = allLines.slice(offset - 1, offset - 1 + maxLines);
+      let output = slice.join('\n');
+
+      const MAX_BYTES = 25000;
+      if (output.length > MAX_BYTES) {
+        output = output.slice(0, MAX_BYTES) + `\n\n[... Truncated at ${MAX_BYTES} characters to prevent firewall payload rejection ...]`;
+      }
+
+      if (offset + slice.length <= totalLines) {
+        output += `\n\n[... Truncated: showing lines ${offset}-${offset + slice.length - 1} of ${totalLines}. Use read_local_file with offset=${offset + slice.length} to read the next lines ...]`;
+      }
+
+      return { output };
     } catch (err: any) {
       return {
         output: '',

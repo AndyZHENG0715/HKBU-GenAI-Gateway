@@ -65,53 +65,132 @@ export async function runAgentLoop({
       let stepReasoning = '';
       let stepToolCalls: ToolCallExecution[] = [];
 
-      await new Promise<void>((resolve, reject) => {
-        streamChatCompletion({
-          model,
-          messages: conversationMessages,
-          tools: openAITools,
-          gatewayKey,
-          signal,
-          onChunk: (chunk) => {
-            if (chunk.content) {
-              stepContent += chunk.content;
-            }
-            if (chunk.reasoning_content) {
-              stepReasoning += chunk.reasoning_content;
-            }
-            if (chunk.tool_calls && chunk.tool_calls.length > 0) {
-              stepToolCalls = chunk.tool_calls.map((tc) => {
-                let parsedArgs: Record<string, any> = {};
-                try {
-                  parsedArgs = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
-                } catch {
-                  parsedArgs = { raw: tc.function.arguments };
-                }
-                return {
-                  callId: tc.id,
-                  toolName: tc.function.name,
-                  args: parsedArgs,
-                  rawArgs: tc.function.arguments,
-                  status: 'pending',
-                  stepIndex: currentIteration,
-                };
-              });
-            }
+      let stepSuccess = false;
+      let stepRetries = 0;
+      const MAX_STEP_RETRIES = 1;
 
-            onStepChunk?.(currentIteration, {
-              content: stepContent,
-              reasoning_content: stepReasoning,
-              toolCalls: stepToolCalls,
-            });
-          },
-          onError: (err) => {
-            reject(err);
-          },
-          onFinish: () => {
-            resolve();
-          },
+      while (!stepSuccess && stepRetries <= MAX_STEP_RETRIES) {
+        if (signal?.aborted) break;
+
+        let stepError: Error | null = null;
+        stepContent = '';
+        stepReasoning = '';
+        stepToolCalls = [];
+
+        await new Promise<void>((resolve) => {
+          streamChatCompletion({
+            model,
+            messages: conversationMessages,
+            tools: openAITools,
+            gatewayKey,
+            signal,
+            onChunk: (chunk) => {
+              if (chunk.content) {
+                stepContent += chunk.content;
+              }
+              if (chunk.reasoning_content) {
+                stepReasoning += chunk.reasoning_content;
+              }
+              if (chunk.tool_calls && chunk.tool_calls.length > 0) {
+                stepToolCalls = chunk.tool_calls.map((tc) => {
+                  let parsedArgs: Record<string, any> = {};
+                  try {
+                    parsedArgs = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
+                  } catch {
+                    parsedArgs = { raw: tc.function.arguments };
+                  }
+                  return {
+                    callId: tc.id,
+                    toolName: tc.function.name,
+                    args: parsedArgs,
+                    rawArgs: tc.function.arguments,
+                    status: 'pending',
+                    stepIndex: currentIteration,
+                  };
+                });
+              }
+
+              onStepChunk?.(currentIteration, {
+                content: stepContent,
+                reasoning_content: stepReasoning,
+                toolCalls: stepToolCalls,
+              });
+            },
+            onError: (err) => {
+              stepError = err;
+              resolve();
+            },
+            onFinish: () => {
+              resolve();
+            },
+          });
         });
-      });
+
+        if (signal?.aborted) break;
+
+        if (!stepError) {
+          stepSuccess = true;
+          break;
+        }
+
+        const rawErrMsg = stepError.message || String(stepError);
+
+        // Generic error recovery: If step > 1 and we have retries left, desensitize tool outputs & inject error context
+        if (stepRetries < MAX_STEP_RETRIES && currentIteration > 1) {
+          stepRetries++;
+          onStepStart?.(currentIteration);
+
+          let sanitizedAnyTool = false;
+          for (let i = conversationMessages.length - 1; i >= 0; i--) {
+            const msg = conversationMessages[i];
+            if (msg.role === 'tool' && typeof msg.content === 'string') {
+              const origLen = msg.content.length;
+              if (origLen > 300) {
+                msg.content = `[Tool output desensitized: content (~${origLen} chars) triggered an upstream error (${rawErrMsg}). Details cleared to allow recovery.]`;
+                sanitizedAnyTool = true;
+              }
+            }
+          }
+
+          conversationMessages.push({
+            role: 'system',
+            content:
+              `[System Notice: The upstream model platform rejected the previous request with error: "${rawErrMsg}". ` +
+              (sanitizedAnyTool
+                ? 'Large or sensitive tool outputs in your history have been desensitized. '
+                : '') +
+              'Please adjust your reasoning, avoid repeating the action that triggered this error, and conclude your answer or explain the platform restriction to the user.]',
+          });
+
+          await new Promise((r) => setTimeout(r, 800));
+          continue;
+        }
+
+        // Soft Landing: Gracefully conclude rather than hard crash
+        const failureStep: AgentStep = {
+          stepIndex: currentIteration,
+          model,
+          reasoning: stepReasoning || undefined,
+          content:
+            `⚠️ **Agent 执行遇到上游平台限制**\n\n` +
+            `上游接口返回了错误：\n> **${rawErrMsg}**\n\n` +
+            `**排查与建议**：\n` +
+            `- 如果刚刚执行了本地代码或脚本读取（如 \`.mjs\`, \`.js\`, \`.sql\` 等），通常是因为文件中的代码特征或体积触发了校园网防火墙（WAF）拦截。\n` +
+            `- 您可以指定读取更小的行数区间（例如使用 \`offset\` 和 \`max_lines\`），或直接告知 Agent 您想了解的具体逻辑。\n` +
+            `- 当前会话仍然有效，您可以直接在下方输入框继续与我对话。`,
+          toolCalls: stepToolCalls,
+          status: 'completed',
+        };
+
+        conversationMessages.push({
+          role: 'assistant',
+          content: failureStep.content,
+        });
+
+        onStepFinish?.(currentIteration, failureStep);
+        onFinish?.(conversationMessages);
+        return conversationMessages;
+      }
 
       if (signal?.aborted) break;
 

@@ -19,10 +19,31 @@ from .tools import (
 
 
 class UpstreamError(RuntimeError):
-    def __init__(self, status_code: int, detail: str):
-        super().__init__(detail)
+    def __init__(self, status_code: int, detail: str | bytes):
+        cleaned = clean_upstream_error_detail(status_code, detail)
+        super().__init__(cleaned)
         self.status_code = status_code
-        self.detail = detail
+        self.detail = cleaned
+
+
+def clean_upstream_error_detail(status_code: int, detail: str | bytes) -> str:
+    """Normalize HTML or raw error dumps from upstream gateways or firewalls into readable text."""
+    if isinstance(detail, bytes):
+        text = detail[:4000].decode("utf-8", errors="replace")
+    else:
+        text = str(detail)[:4000]
+
+    lower = text.lower()
+    if "<!doctype html" in lower or "<html" in lower:
+        if "access denied" in lower or status_code == 403:
+            return (
+                f"HKBU Campus Firewall / WAF blocked the request (HTTP {status_code} Access Denied). "
+                "The payload was intercepted by university security policy (often triggered by sensitive code patterns, scripts, SQL, or oversized file contents)."
+            )
+        if status_code in (502, 503, 504):
+            return f"HKBU upstream gateway returned an HTML error (HTTP {status_code} Gateway Error)."
+        return f"HKBU upstream returned an HTML error page (HTTP {status_code})."
+    return text[:2000]
 
 
 REASONING_TAG_PAIRS = [
@@ -226,7 +247,7 @@ class HKBUProvider:
             ) as response:
                 if response.is_error:
                     raw_bytes = await response.aread()
-                    error_detail = raw_bytes[:2000].decode("utf-8", errors="replace")
+                    error_detail = clean_upstream_error_detail(response.status_code, raw_bytes)
                     error_json = json.dumps({
                         "error": {
                             "message": f"HKBU Platform error ({response.status_code}): {error_detail}",

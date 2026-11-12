@@ -55,3 +55,49 @@ def test_json_stream_fallback_preserves_native_tools_reasoning_and_finish(finish
     expected_finish = "tool_calls" if finish_reason == "stop" else finish_reason
     assert chunks[-1]["choices"][0]["finish_reason"] == expected_finish
     assert output.endswith("data: [DONE]\n\n")
+
+
+def test_clean_upstream_error_detail_normalizes_html_waf_error():
+    from hkbu_gateway.providers import clean_upstream_error_detail
+
+    html_error = b"""<!DOCTYPE html>
+<html lang="en">
+<head><title>Access Denied</title></head>
+<body><div class="content"><img src="data:image/png;base64,abc"><h1>Access Denied</h1></div></body>
+</html>"""
+    msg = clean_upstream_error_detail(403, html_error)
+    assert "HKBU Campus Firewall / WAF blocked the request (HTTP 403 Access Denied)" in msg
+    assert "<html" not in msg
+    assert "<img" not in msg
+
+    # Plain JSON / text passes through
+    assert clean_upstream_error_detail(400, '{"error":"bad request"}') == '{"error":"bad request"}'
+
+
+def test_sanitize_message_content_strips_null_bytes():
+    from hkbu_gateway.app import _sanitize_message_content
+
+    msg = {"role": "user", "content": "Hello\x00World\x00!"}
+    _sanitize_message_content(msg)
+    assert msg["content"] == "HelloWorld!"
+    assert "\x00" not in msg["content"]
+
+
+def test_upstream_403_html_in_stream_yields_cleaned_message():
+    from hkbu_gateway.providers import HKBUProvider
+    from hkbu_gateway.config import Settings
+
+    html_body = b"<!DOCTYPE html><html><title>Access Denied</title><body>Blocked</body></html>"
+
+    async def run():
+        transport = httpx.MockTransport(lambda r: httpx.Response(403, content=html_body))
+        async with httpx.AsyncClient(transport=transport) as client:
+            provider = HKBUProvider(Settings(), client)
+            return b"".join([c async for c in provider.chat_stream("gpt-6-luna", {"messages": []}, "key")]).decode()
+
+    raw = asyncio.run(run())
+    events = [json.loads(line[6:]) for line in raw.splitlines() if line.startswith("data: {")]
+    assert len(events) == 1
+    err_msg = events[0]["error"]["message"]
+    assert "HKBU Campus Firewall / WAF blocked the request (HTTP 403 Access Denied)" in err_msg
+    assert "<!DOCTYPE html>" not in err_msg

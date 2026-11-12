@@ -289,8 +289,11 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
 
     # 2. Already string
     if isinstance(content, str):
+        content = content.replace("\x00", "")
         if not content.strip():
             msg["content"] = _default_empty_content(role, has_tool_calls)
+        else:
+            msg["content"] = content
         return
 
     # 3. List of content objects (VS Code / Copilot / multimodal)
@@ -345,7 +348,7 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
                     text_pieces.append(str(text_val))
                 else:
                     text_pieces.append(str(item))
-            joined = "".join(text_pieces)
+            joined = "".join(text_pieces).replace("\x00", "")
             if not joined.strip():
                 msg["content"] = _default_empty_content(role, has_tool_calls)
             else:
