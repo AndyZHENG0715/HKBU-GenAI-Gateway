@@ -397,7 +397,7 @@ To achieve absolute server safety and zero operational overhead on Railway, comp
 ### 10.2 Tier 1: In-Browser Sandboxed Toolsuite (Zero-Install)
 Available instantly with zero configuration or local installations:
 - **Pyodide CPython 3.12 Wasm Engine**: Runs Python scripts directly inside the browser thread. Automatically captures `sys.stdout` and `sys.stderr`. Detects Matplotlib plot creation and extracts chart figures as inline Base64 PNG images rendered inside collapsible `ToolCallCard` components.
-- **Browser File System Access API**: Allows users to select a local folder via the native browser directory picker (`showDirectoryPicker()`). The agent can list directories, read source files, and write output files directly to the selected directory after obtaining browser permission.
+- **Browser File System Access API**: Allows users to select a local folder via the native browser directory picker (`showDirectoryPicker()`). The agent can list directories, read source files, and write output files directly to the selected directory after obtaining browser permission. File reads enforce a 25 KB UTF-8 byte boundary limit (via `TextEncoder`), line-based pagination (`offset`, `max_lines`), full line preservation, and binary file rejection.
 - **Web Content Extractor & Calculator**: Fetches web documentation and evaluates mathematical expressions within safe browser sandboxes.
 
 ### 10.3 Tier 2: Opt-In Local Companion Node (Power Users)
@@ -413,4 +413,6 @@ Inspired by the core architecture of Pi-agent (`pi-agent-core`):
 3. **Safety Guards**:
    - **Iteration Cap**: Enforces a strict default limit of 10 loop iterations per prompt to prevent runaway token expenditure.
    - **Cancellation Token**: Live `AbortController` connection allows users to interrupt the agent cycle at any moment.
-   - **Output Truncation**: Tool outputs exceeding safe lengths are truncated with informational indicators to protect token budgets.
+   - **Output Truncation & Byte Bounds**: Tool outputs exceeding safe lengths are truncated with informational indicators and line-based pagination pointers to protect token budgets and prevent upstream WAF rejections.
+   - **Resilient Error Recovery & Soft Landing**: Intercepts upstream payload limits (413), campus WAF blocks (403), and transient gateway errors; dynamically redacts oversized tool outputs, feeds allow-listed diagnostic guidance back to the agent loop to self-correct, or gracefully soft-lands with actionable diagnostics.
+   - **Deep Payload Sanitization**: Gateway backend cleanses null bytes across text and multimodal messages, and converts raw upstream HTML 403 WAF blocks into normalized error structures.

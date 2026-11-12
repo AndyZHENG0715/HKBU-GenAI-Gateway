@@ -7,6 +7,24 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Resilient Agent Loop Self-Healing & Generic Soft Landing (`frontend/src/lib/agent/loop.ts`)**:
+  - Implemented generic recovery when upstream returns payload size errors (413 / context window limits), campus firewall / WAF blocks (403 Access Denied), or transient gateway failures (500, 502, 503, 504, timeout).
+  - Uses strictly allow-listed diagnostic category tokens (`payload_size_or_context_limit`, `security_policy_or_waf_rejection`, `transient_service_unavailable`) to eliminate prompt injection risks from untrusted upstream error strings.
+  - Automatically redacts the latest oversized or implicated tool output in the working context on size/WAF rejection while injecting concrete actionable recovery guidance.
+  - Retries initial user turns on transient failures without duplicating requests, while avoiding retries on unmitigated oversized payloads.
+  - Soft-lands gracefully with clear user-facing diagnostics instead of crashing or leaving the UI in an unhandled error state.
+- **Safe Bounded Local File Inspection (`frontend/src/lib/agent/tools/browserFs.ts`)**:
+  - Added line-based pagination (`offset`, `max_lines` default 300, clamped to 2000) and a strict 25 KB UTF-8 byte boundary limit using `TextEncoder`.
+  - Line-boundary preservation: truncates only at full line boundaries with exact `nextOffset` pointers so the agent can read large source files chunk by chunk without getting blocked by upstream firewalls.
+  - Rejects binary file formats (`.png`, `.jpg`, `.pdf`, `.db`, `.sqlite`, `.exe`, etc.) before loading raw bytes into the LLM context.
+
+### Fixed
+- **Upstream HTML 403 / WAF Error Normalization (`src/hkbu_gateway/providers.py`)**:
+  - Added `clean_upstream_error_detail` to extract `<title>` and heading text from upstream campus firewall HTML error responses, replacing unparseable raw HTML with clean, actionable error messages.
+- **Deep Null-Byte Sanitization (`src/hkbu_gateway/app.py`)**:
+  - Sanitized null bytes (`\x00`) across all message payloads, including string contents, multimodal text parts, and nested `image_url.url` structures.
+
 ## [2.1.0] - 2026-10-20
 
 ### Changed
