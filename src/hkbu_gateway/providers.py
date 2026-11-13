@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -16,6 +17,38 @@ from .tools import (
     is_tool_emulation_required,
     prepare_emulated_payload,
 )
+
+
+logger = logging.getLogger(__name__)
+
+
+def log_token_usage(model: str, usage: dict[str, Any] | None) -> None:
+    """Log token usage and prompt cache hit rate if usage statistics are present."""
+    if not isinstance(usage, dict):
+        return
+    prompt_tokens = usage.get("prompt_tokens") or 0
+    completion_tokens = usage.get("completion_tokens") or 0
+    total_tokens = usage.get("total_tokens") or (prompt_tokens + completion_tokens)
+
+    # Check OpenAI/Azure prompt_tokens_details or DeepSeek cache_read_input_tokens
+    prompt_details = usage.get("prompt_tokens_details")
+    cached_tokens = 0
+    if isinstance(prompt_details, dict):
+        cached_tokens = prompt_details.get("cached_tokens") or 0
+    if not cached_tokens:
+        cached_tokens = usage.get("cache_read_input_tokens") or 0
+
+    hit_rate = (cached_tokens / prompt_tokens * 100) if prompt_tokens > 0 else 0.0
+    if cached_tokens > 0:
+        logger.info(
+            "Token Usage [%s]: prompt=%d, cached=%d (%.1f%% cache hit), completion=%d, total=%d",
+            model, prompt_tokens, cached_tokens, hit_rate, completion_tokens, total_tokens,
+        )
+    else:
+        logger.info(
+            "Token Usage [%s]: prompt=%d, completion=%d, total=%d",
+            model, prompt_tokens, completion_tokens, total_tokens,
+        )
 
 
 class UpstreamError(RuntimeError):
@@ -423,6 +456,9 @@ class HKBUProvider:
                             has_emitted_finish = True
                             yield b"data: [DONE]\n\n"
                             return
+
+                        if chunk_obj.get("usage"):
+                            log_token_usage(model, chunk_obj.get("usage"))
 
                         choices = chunk_obj.get("choices")
                         if choices and isinstance(choices, list) and len(choices) > 0:

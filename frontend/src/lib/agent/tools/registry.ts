@@ -23,7 +23,9 @@ export function getAllAvailableTools(includeCompanion = false): AgentTool[] {
 }
 
 export function formatToOpenAITools(tools: AgentTool[]): OpenAIToolDefinition[] {
-  return tools.map((t) => ({
+  // Deterministically sort tools by name to ensure stable prefix for upstream KV-cache reuse
+  const sorted = [...tools].sort((a, b) => a.name.localeCompare(b.name));
+  return sorted.map((t) => ({
     type: 'function',
     function: {
       name: t.name,

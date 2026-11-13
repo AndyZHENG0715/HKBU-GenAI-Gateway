@@ -20,6 +20,11 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - Added line-based pagination (`offset`, `max_lines` default 300, clamped to 1000) and a strict 25 KB UTF-8 byte boundary limit using `TextEncoder`.
   - Line-boundary preservation: truncates only at full line boundaries with exact `nextOffset` pointers so the agent can read large source files chunk by chunk without getting blocked by upstream firewalls.
   - Rejects binary file formats (`.png`, `.jpg`, `.pdf`, `.db`, `.sqlite`, `.exe`, etc.) before loading raw bytes into the LLM context.
+- **Prompt Cache Optimization & Observability**:
+  - Deterministic tool schema sorting by name (`formatToOpenAITools`, `upstream_payload`) ensuring stable KV-cache prefix across turns.
+  - Automatic `stream_options: {"include_usage": true}` injection and passthrough for streaming responses.
+  - Server-side token usage and cache hit rate logging (`log_token_usage` reporting prompt, cached, completion tokens, and hit percentage).
+  - Playground UI real-time cache badge displaying hit percentage and cached token count.
 
 ### Fixed
 - **Upstream HTML 403 / WAF Error Normalization (`src/hkbu_gateway/providers.py`)**:

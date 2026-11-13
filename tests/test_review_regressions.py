@@ -125,3 +125,69 @@ def test_upstream_403_html_in_stream_yields_cleaned_message():
     err_msg = events[0]["error"]["message"]
     assert "HKBU Campus Firewall / WAF blocked the request (HTTP 403 Access Denied)" in err_msg
     assert "<!DOCTYPE html>" not in err_msg
+
+
+def test_log_token_usage_cache_metrics(caplog):
+    import logging
+    from hkbu_gateway.providers import log_token_usage
+
+    caplog.set_level(logging.INFO)
+
+    # 1. OpenAI style prompt_tokens_details
+    usage_openai = {
+        "prompt_tokens": 2000,
+        "completion_tokens": 100,
+        "total_tokens": 2100,
+        "prompt_tokens_details": {"cached_tokens": 1500},
+    }
+    log_token_usage("gpt-6-luna", usage_openai)
+    assert "Token Usage [gpt-6-luna]: prompt=2000, cached=1500 (75.0% cache hit)" in caplog.text
+
+    # 2. DeepSeek style cache_read_input_tokens
+    caplog.clear()
+    usage_deepseek = {
+        "prompt_tokens": 1000,
+        "completion_tokens": 50,
+        "total_tokens": 1050,
+        "cache_read_input_tokens": 800,
+    }
+    log_token_usage("deepseek-v4-flash", usage_deepseek)
+    assert "Token Usage [deepseek-v4-flash]: prompt=1000, cached=800 (80.0% cache hit)" in caplog.text
+
+    # 3. No cache hit
+    caplog.clear()
+    usage_none = {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120}
+    log_token_usage("qwen3.7-plus", usage_none)
+    assert "Token Usage [qwen3.7-plus]: prompt=100, completion=20, total=120" in caplog.text
+
+
+def test_upstream_payload_deterministic_tool_sorting_and_stream_options():
+    from hkbu_gateway.app import upstream_payload
+    from hkbu_gateway.protocol import ChatCompletionRequest
+
+    # Test tools sorting
+    req = ChatCompletionRequest(
+        model="gpt-6-luna",
+        messages=[{"role": "user", "content": "hi"}],
+        stream=True,
+        tools=[
+            {"type": "function", "function": {"name": "write_file"}},
+            {"type": "function", "function": {"name": "calculator"}},
+            {"type": "function", "function": {"name": "ask_question"}},
+        ],
+    )
+    payload = upstream_payload(req, "gpt-6-luna")
+    tool_names = [t["function"]["name"] for t in payload["tools"]]
+    assert tool_names == ["ask_question", "calculator", "write_file"]
+    assert payload.get("stream_options") == {"include_usage": True}
+
+    # Custom stream_options preserved
+    req_custom = ChatCompletionRequest(
+        model="gpt-6-luna",
+        messages=[{"role": "user", "content": "hi"}],
+        stream=True,
+        stream_options={"include_usage": False},
+    )
+    payload_custom = upstream_payload(req_custom, "gpt-6-luna")
+    assert payload_custom.get("stream_options") == {"include_usage": False}
+

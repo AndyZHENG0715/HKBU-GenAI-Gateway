@@ -1,4 +1,4 @@
-import { ChatMessage, streamChatCompletion } from '../api';
+import { ChatMessage, streamChatCompletion, UsageInfo } from '../api';
 import { AgentStep, AgentTool, ToolCallExecution } from './types';
 import { DEFAULT_BROWSER_TOOLS, dispatchToolExecution, formatToOpenAITools } from './tools/registry';
 
@@ -16,6 +16,7 @@ export interface RunAgentLoopOptions {
       content?: string;
       reasoning_content?: string;
       toolCalls?: ToolCallExecution[];
+      usage?: UsageInfo;
     }
   ) => void;
   onToolStart?: (stepIndex: number, toolCall: ToolCallExecution) => void;
@@ -114,6 +115,7 @@ export async function runAgentLoop({
                 content: stepContent,
                 reasoning_content: stepReasoning,
                 toolCalls: stepToolCalls,
+                usage: chunk.usage,
               });
             },
             onError: (err) => {

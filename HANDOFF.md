@@ -8,7 +8,7 @@ Last updated: **2026-11-13**. Read [the latest handoff](#7-latest-handoff-2026-1
 
 - **Current Version**: `2.1.1` (HKBU WAF error normalization, bounded file inspection, and resilient agent self-healing), deployed to `https://byok.aitutor.ink`.
 - **Active Branch**: `claude/project-thread-vcaexs` (PR #4). Merges to `main` auto-deploy to the production server (Alibaba Cloud ECS); there is no CI.
-- **Test Status**: 126 passing in the latest full run (`PYTHONPATH=src pytest`); 0 failures.
+- **Test Status**: 128 passing in the latest full run (`PYTHONPATH=src pytest`); 0 failures.
 - **Frontend Status**: Built cleanly with Vite (`npm run build` targeting `static/index.html` and `static/hkbuapi4agent.html`).
 - **Local Services**:
   - Gateway runs on `http://127.0.0.1:8000` (FastAPI).
@@ -138,8 +138,13 @@ Earlier incident handoffs (2026-09-30 Qwen history loss, 2026-10-02 DeepSeek amn
    - `runAgentLoop` in `frontend/src/lib/agent/loop.ts` classifies errors into allow-listed categories (`payload_size_or_context_limit`, `security_policy_or_waf_rejection`, `transient_service_unavailable`).
    - Automatically redacts only the implicated oversized tool output, injects actionable pagination recovery guidance, retries initial turns on transient errors, and soft-lands gracefully on failure without UI crashes.
 4. **Test & Documentation Verification**:
-   - 126 backend tests passing (`tests/test_review_regressions.py`).
+   - 128 backend tests passing (`tests/test_review_regressions.py`).
    - All 5 version cascade files and documentation (`CHANGELOG.md`, `README.*`, `troubleshooting.md`, `architecture.md`) updated.
+5. **Prompt Cache Optimization & Observability (Completed)**:
+   - **Deterministic Tool Schema Sorting**: `formatToOpenAITools` and `upstream_payload` deterministically sort tools by name, ensuring invariant prompt prefix across tool-use turns.
+   - **Streaming Usage & Cache Metrics Passthrough**: `stream_options: {"include_usage": true}` automatically injected and forwarded.
+   - **Observability**: `log_token_usage` reports prompt, cached, completion tokens, and cache hit percentage on both streaming and non-streaming responses.
+   - **UI Telemetry**: Playground renders a real-time `⚡ Cache` badge next to message actions showing cache hit rate and token counts.
 
 ### Context & Goals for Next Mission: Cache Hit Rate Optimization (缓存命中率优化)
 When optimizing cache hit rates (Prompt Caching / KV-Cache Reuse) in HKBU GenAI Gateway, the incoming agent should focus on the following dimensions:

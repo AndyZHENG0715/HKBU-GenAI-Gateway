@@ -26,7 +26,7 @@ from .config import Settings
 from .credentials import Credential, CredentialStore
 from .accounts import AccountStore, require_account, router as account_router
 from .protocol import ChatCompletionRequest, EmbeddingRequest, openai_error
-from .providers import HKBUProvider, UpstreamError, REASONING_TAG_PAIRS
+from .providers import HKBUProvider, UpstreamError, REASONING_TAG_PAIRS, log_token_usage
 from .registry import MODELS, Model, find_model
 from .webfetch import FetchPolicyError, fetch_public_url
 
@@ -492,6 +492,22 @@ def upstream_payload(request: BaseModel, model_id: str | None = None) -> dict[st
                 _sanitize_message_content(msg)
                 _strip_response_only_fields(msg)
 
+    # Deterministic tool sorting for stable prompt caching prefix
+    tools = payload.get("tools")
+    if isinstance(tools, list):
+        def _tool_sort_key(t: Any) -> str:
+            if isinstance(t, dict):
+                fn = t.get("function")
+                if isinstance(fn, dict) and "name" in fn:
+                    return str(fn.get("name") or "")
+                return str(t.get("name") or t.get("id") or "")
+            return str(t)
+        payload["tools"] = sorted(tools, key=_tool_sort_key)
+
+    # Request streaming usage chunks by default so cache metrics and token usage are observed
+    if getattr(request, "stream", False) and "stream_options" not in payload:
+        payload["stream_options"] = {"include_usage": True}
+
     model = find_model(model_id) if model_id else None
     if model:
         _sanitize_parameters(payload, model)
@@ -520,6 +536,8 @@ async def chat_completions(
         response = await provider.chat(model.id, payload, credential.hkbu_api_key)
         data = response.json()
         if isinstance(data, dict):
+            if "usage" in data:
+                log_token_usage(model.id, data.get("usage"))
             if "choices" not in data or not data["choices"]:
                 data["choices"] = [{
                     "index": 0,
