@@ -19,14 +19,16 @@ Students and researchers can convert their university platform key into standard
 - **🛡️ Edge Protocol Stabilization for Coding Agents**:
   - Automatically sanitizes complex multi-turn message arrays (`messages[].content` containing Anthropic-style `tool_result` arrays) into plain strings or compliant OpenAI format, resolving upstream NestJS class-validator 400 errors.
   - Strips response-only fields that agent clients echo back in history (`reasoning_content`, `tool_calls[].index`), which HKBU REST v1 rejects with HTTP 400.
+  - Normalizes raw HTML campus firewall (WAF) 403 error pages into clean error messages, and strips null bytes across scalar and multimodal message payloads.
 - **🔍 Universal Model Discovery & Capabilities**:
   - Exposes `/v1/models`, `/models`, `/v1/model`, `/model`, OpenRouter-compatible `/api/v1/models`, and LiteLLM-compatible `/v1/model/info`.
   - Comprehensive model capabilities metadata following [models.dev](https://models.dev) and Tencent WorkBuddy schemas (`supportsToolCall`, `supportsReasoning`, `supportsVision`, `contextWindow`, `maxTokens`, `tool_call`, `reasoning`, `attachment`, `limit`, `capabilities`).
 - **🤖 Autonomous Agentic Playground (Hybrid Compute)**:
   - Built-in autonomous agent loop (inspired by Pi agent & OpenClaw) with multi-step reasoning, streaming tool calls, and local execution dispatch.
+  - **Self-Healing Error Recovery & Soft Landing**: Intercepts upstream payload limits (413), campus WAF blocks (403), and transient gateway errors; automatically redacts oversized tool outputs, feeds allow-listed diagnostic guidance back into the loop to self-correct, or gracefully soft-lands with actionable diagnostics.
   - **Zero Server Overhead on Railway**: All code execution, data science, and file manipulation run on the user's browser or local machine:
     - **In-Browser Python via WebAssembly (Pyodide)**: Runs full CPython 3.12 with NumPy, Pandas, and Matplotlib. Plots render directly inside chat bubbles!
-    - **Local Workspace Inspection (Browser File System Access API)**: Select any local folder to let the agent inspect and edit files directly from the browser.
+    - **Local Workspace Inspection (Browser File System Access API)**: Select any local folder to let the agent inspect and edit files directly from the browser. Enforces a 25 KB UTF-8 boundary limit, line pagination (`offset`, `max_lines`), and binary file guards.
     - **3-Tier Web Page Content Extractor**: High-resilience web fetching using server proxy (`/api/tools/web_fetch`), local companion, or browser direct fetch, completely bypassing browser CORS restrictions.
     - **Tier 2 Local Companion Node (`companion/hkbu_genai_companion.py`)**: Optional zero-dependency local daemon enabling full host terminal (`bash`) and git execution.
 - **💬 Interactive Web Playground**:

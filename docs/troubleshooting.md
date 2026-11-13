@@ -212,6 +212,10 @@ The SQLite database `hkbu_gateway.db` contains credentials encrypted with a spec
 Unlike Azure OpenAI deployments which require `?api-version=2024-05-01-preview`, HKBU's Gemini deployments reject `api-version` query strings.
 
 #### Gateway Mitigation
+In REST v1 (`https://genai.hkbu.edu.hk/api/v1`), requests do not include an `api-version` query parameter. For deployments using legacy v0 deployment URLs, `providers.py` explicitly omits `api-version` when routing requests to Google Gemini models.
+
+---
+
 ### Issue 10: Agent Mode `web_fetch` Tool Fails with CORS or `TypeError: Failed to fetch` on Public Websites
 
 #### Symptoms
@@ -227,6 +231,37 @@ Web browsers strictly enforce the Same-Origin Policy (SOP). Directly calling `fe
 1. **Tier 1 (Gateway Backend Proxy)**: Added `POST /api/tools/web_fetch` to `src/hkbu_gateway/app.py`. Requests are routed through the backend HTTP client with desktop User-Agent, automated redirect handling, HTML tag cleaning (`_clean_html_text`), and cloud metadata SSRF protection.
 2. **Tier 2 (Companion Daemon)**: Added `POST /api/web_fetch` to `companion/hkbu_genai_companion.py`.
 3. **Tier 3 (Browser Direct)**: Maintained as fallback for open CORS endpoints.
+
+---
+
+### Issue 11: Agent reading local files receives HTTP 403 `Access Denied` / HTML block page from HKBU WAF
+
+#### Symptoms
+- In Playground Agent Mode, when the agent attempts to inspect local project files (e.g. `.mjs`, `.js`, `.py`, `.json`, `.ts`), the run fails with an error:
+  ```text
+  HKBU Platform error (403): <!DOCTYPE html> ... <title>Access Denied</title>
+  ```
+- The raw response displays an HTML error page featuring an HKBU banner and "Access Denied".
+
+#### Root Causes
+1. **Campus Firewall / WAF Inspection**: The HKBU campus firewall and perimeter reverse proxies inspect incoming HTTP request bodies for sensitive script code, payload patterns, or oversized body buffers (~32KB–128KB). When an agent reads unconstrained source files (especially JavaScript/TypeScript modules containing executable keywords or script signatures) and echoes them into multi-turn `tool` messages, subsequent request bodies trigger WAF block rules.
+2. **Raw HTML Error Responses**: When blocked by the perimeter firewall, upstream returns an unformatted HTML error page instead of an OpenAI-compatible JSON payload, causing unhandled JSON parsing failures in downstream clients.
+
+#### Gateway & Playground Mitigation
+1. **HTML 403 Normalization (`src/hkbu_gateway/providers.py`)**:
+   `clean_upstream_error_detail()` detects HTML error responses (including campus firewall WAF blocks and 50x gateway errors) and normalizes them into clean, structured diagnostics (`HKBU Platform error (403): Access Denied. The request was blocked by upstream firewall/WAF policies.`).
+2. **Deep Null-Byte Sanitization (`src/hkbu_gateway/app.py`)**:
+   `_sanitize_message_content()` strips null bytes (`\x00`) recursively across all string contents, multimodal text parts, and nested fields in `image_url` objects before dispatching upstream.
+3. **Safe Bounded Local File Reading (`frontend/src/lib/agent/tools/browserFs.ts`)**:
+   - `read_local_file` enforces a strict 25 KB UTF-8 byte boundary limit (via `TextEncoder`).
+   - Supports line-based pagination (`offset` and `max_lines`, default 300, clamped to 1000).
+   - Preserves complete line boundaries and supplies `nextOffset` pointers so agents can read large source files chunk by chunk.
+   - Automatically rejects binary file formats (`.png`, `.jpg`, `.pdf`, `.sqlite`, `.exe`, etc.) to prevent corrupting LLM context.
+4. **Resilient Agent Loop Self-Healing & Soft Landing (`frontend/src/lib/agent/loop.ts`)**:
+   - Classifies errors into allow-listed categories (`payload_size_or_context_limit`, `security_policy_or_waf_rejection`, `transient_service_unavailable`).
+   - On size or WAF rejection, dynamically redacts the oversized or implicated tool output in the active context and feeds allow-listed recovery instructions back to the agent loop to prompt pagination.
+   - Retries transient errors (500, 502, 503, 504, network timeout) on initial prompts while avoiding retries on unmitigated oversized payloads.
+   - Gracefully soft-lands with actionable diagnostics if recovery attempts are exhausted, avoiding hard UI crashes.
 
 ---
 

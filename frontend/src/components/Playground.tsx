@@ -42,6 +42,14 @@ import {
   isFileSystemAccessSupported,
 } from '../lib/agent/tools/browserFs';
 
+export interface MessageUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  cachedTokens?: number;
+  cacheHitRate?: number;
+}
+
 export interface PlaygroundMessage {
   id: string;
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -51,6 +59,7 @@ export interface PlaygroundMessage {
   error?: string;
   timestamp?: number;
   toolCalls?: ToolCallExecution[];
+  usage?: MessageUsage;
 }
 
 export interface ChatSession {
@@ -320,6 +329,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
       const accumulatedToolCalls: ToolCallExecution[] = [];
       let accumulatedReasoning = '';
       let latestAnswer = '';
+      let latestAgentUsage: MessageUsage | undefined;
 
       const upsertToolCall = (tc: ToolCallExecution, stepIndex?: number) => {
         const enriched: ToolCallExecution = {
@@ -345,6 +355,24 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
           setAgentProgress(`Step ${stepIndex}/10: Reasoning and selecting tools...`);
         },
         onStepChunk: (stepIndex, chunk) => {
+          if (chunk.usage) {
+            const pTokens = chunk.usage.prompt_tokens || 0;
+            const cTokens = chunk.usage.completion_tokens || 0;
+            const tTokens = chunk.usage.total_tokens || (pTokens + cTokens);
+            const cdTokens =
+              chunk.usage.prompt_tokens_details?.cached_tokens ||
+              chunk.usage.cache_read_input_tokens ||
+              0;
+            const rate = pTokens > 0 ? (cdTokens / pTokens) * 100 : 0;
+            latestAgentUsage = {
+              promptTokens: pTokens,
+              completionTokens: cTokens,
+              totalTokens: tTokens,
+              cachedTokens: cdTokens,
+              cacheHitRate: rate,
+            };
+          }
+
           let stepReasoning = chunk.reasoning_content || '';
           let stepContent = chunk.content || '';
 
@@ -389,6 +417,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                     reasoning: currentTotalReasoning,
                     toolCalls: [...accumulatedToolCalls],
                     isThinking: currentlyThinking,
+                    usage: latestAgentUsage || m.usage,
                   }
                 : m
             ),
@@ -474,6 +503,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                     reasoning: accumulatedReasoning || m.reasoning,
                     toolCalls: [...accumulatedToolCalls],
                     isThinking: false,
+                    usage: latestAgentUsage || m.usage,
                   }
                 : m
             ),
@@ -485,6 +515,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
 
     let rawReasoning = '';
     let rawContent = '';
+    let latestChatUsage: MessageUsage | undefined;
 
     await streamChatCompletion({
       model: modelToUse,
@@ -492,6 +523,24 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
       gatewayKey: apiKey,
       signal: controller.signal,
       onChunk: (chunk: StreamChunk) => {
+        if (chunk.usage) {
+          const pTokens = chunk.usage.prompt_tokens || 0;
+          const cTokens = chunk.usage.completion_tokens || 0;
+          const tTokens = chunk.usage.total_tokens || (pTokens + cTokens);
+          const cdTokens =
+            chunk.usage.prompt_tokens_details?.cached_tokens ||
+            chunk.usage.cache_read_input_tokens ||
+            0;
+          const rate = pTokens > 0 ? (cdTokens / pTokens) * 100 : 0;
+          latestChatUsage = {
+            promptTokens: pTokens,
+            completionTokens: cTokens,
+            totalTokens: tTokens,
+            cachedTokens: cdTokens,
+            cacheHitRate: rate,
+          };
+        }
+
         if (chunk.reasoning_content) {
           rawReasoning += chunk.reasoning_content;
         }
@@ -537,6 +586,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                   reasoning: parsedReasoning,
                   isThinking: currentlyThinking,
                   error: undefined,
+                  usage: latestChatUsage || m.usage,
                 }
               : m
           ),
@@ -561,7 +611,9 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
         updateCurrentSession((session) => ({
           ...session,
           messages: session.messages.map((m) =>
-            m.id === assistantMsgId ? { ...m, isThinking: false } : m
+            m.id === assistantMsgId
+              ? { ...m, isThinking: false, usage: latestChatUsage || m.usage }
+              : m
           ),
         }));
       },
@@ -1415,6 +1467,30 @@ export const Playground: React.FC<PlaygroundProps> = ({ currentApiKey }) => {
                                     </>
                                   )}
                                 </button>
+
+                                {msg.usage && (
+                                  <div
+                                    className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-medium border shadow-2xs select-none ${
+                                      msg.usage.cachedTokens && msg.usage.cachedTokens > 0
+                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60'
+                                        : 'bg-slate-100/80 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                                    }`}
+                                    title={
+                                      msg.usage.cachedTokens && msg.usage.cachedTokens > 0
+                                        ? `Cache Hit: ${msg.usage.cachedTokens} / ${msg.usage.promptTokens} input tokens (${msg.usage.cacheHitRate?.toFixed(1)}%). Total: ${msg.usage.totalTokens} tokens.`
+                                        : `Prompt: ${msg.usage.promptTokens || 0}, Completion: ${msg.usage.completionTokens || 0}, Total: ${msg.usage.totalTokens || 0} tokens`
+                                    }
+                                  >
+                                    {msg.usage.cachedTokens && msg.usage.cachedTokens > 0 ? (
+                                      <>
+                                        <Zap className="w-2.5 h-2.5 text-emerald-500 fill-emerald-500 shrink-0" />
+                                        <span>Cache {msg.usage.cacheHitRate?.toFixed(0)}% ({msg.usage.cachedTokens} tok)</span>
+                                      </>
+                                    ) : (
+                                      <span>{msg.usage.totalTokens || 0} tokens</span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>

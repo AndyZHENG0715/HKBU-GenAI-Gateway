@@ -26,7 +26,7 @@ from .config import Settings
 from .credentials import Credential, CredentialStore
 from .accounts import AccountStore, require_account, router as account_router
 from .protocol import ChatCompletionRequest, EmbeddingRequest, openai_error
-from .providers import HKBUProvider, UpstreamError, REASONING_TAG_PAIRS
+from .providers import HKBUProvider, UpstreamError, REASONING_TAG_PAIRS, log_token_usage
 from .registry import MODELS, Model, find_model
 from .webfetch import FetchPolicyError, fetch_public_url
 
@@ -272,6 +272,17 @@ def _default_empty_content(role: str, has_tool_calls: bool) -> str | None:
     return " "
 
 
+def _deep_strip_null(val: Any) -> Any:
+    """Recursively strip null bytes from strings, dicts, and lists."""
+    if isinstance(val, str):
+        return val.replace("\x00", "")
+    if isinstance(val, dict):
+        return {k: _deep_strip_null(v) for k, v in val.items()}
+    if isinstance(val, list):
+        return [_deep_strip_null(v) for v in val]
+    return val
+
+
 def _sanitize_message_content(msg: dict[str, Any]) -> None:
     """Ensure message content conforms to upstream HKBU requirements.
     Must be either a non-empty string, null (for assistant tool_calls), or an array of
@@ -289,8 +300,11 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
 
     # 2. Already string
     if isinstance(content, str):
+        content = content.replace("\x00", "")
         if not content.strip():
             msg["content"] = _default_empty_content(role, has_tool_calls)
+        else:
+            msg["content"] = content
         return
 
     # 3. List of content objects (VS Code / Copilot / multimodal)
@@ -308,31 +322,27 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
             sanitized_parts = []
             for item in content:
                 if isinstance(item, str):
-                    sanitized_parts.append({"type": "text", "text": item if item.strip() else " "})
+                    cleaned = item.replace("\x00", "")
+                    sanitized_parts.append({"type": "text", "text": cleaned if cleaned.strip() else " "})
                 elif isinstance(item, dict):
                     itype = item.get("type")
                     if itype == "image_url":
-                        sanitized_parts.append(item)
+                        sanitized_parts.append(_deep_strip_null(item))
                     elif itype == "text":
-                        text_val = item.get("text") or item.get("value") or ""
-                        sanitized_parts.append({"type": "text", "text": str(text_val) if str(text_val).strip() else " "})
+                        text_val = str(item.get("text") or item.get("value") or "").replace("\x00", "")
+                        sanitized_parts.append({"type": "text", "text": text_val if text_val.strip() else " "})
                     else:
-                        text_val = (
-                            item.get("text")
-                            or item.get("value")
-                            or item.get("content")
-                            or json.dumps(item, ensure_ascii=False)
-                        )
-                        sanitized_parts.append({"type": "text", "text": str(text_val) if str(text_val).strip() else " "})
+                        sanitized_parts.append(_deep_strip_null(item))
                 else:
-                    sanitized_parts.append({"type": "text", "text": str(item) if str(item).strip() else " "})
+                    cleaned = str(item).replace("\x00", "")
+                    sanitized_parts.append({"type": "text", "text": cleaned if cleaned.strip() else " "})
             msg["content"] = sanitized_parts
         else:
             # No images: flatten parts into a single string for maximum upstream compatibility
             text_pieces = []
             for item in content:
                 if isinstance(item, str):
-                    text_pieces.append(item)
+                    text_pieces.append(item.replace("\x00", ""))
                 elif isinstance(item, dict):
                     text_val = (
                         item.get("text")
@@ -342,9 +352,9 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
                     )
                     if not text_val and item.get("type") not in ("text", "image_url"):
                         text_val = json.dumps(item, ensure_ascii=False)
-                    text_pieces.append(str(text_val))
+                    text_pieces.append(str(text_val).replace("\x00", ""))
                 else:
-                    text_pieces.append(str(item))
+                    text_pieces.append(str(item).replace("\x00", ""))
             joined = "".join(text_pieces)
             if not joined.strip():
                 msg["content"] = _default_empty_content(role, has_tool_calls)
@@ -355,7 +365,14 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
     # 4. Dict content
     if isinstance(content, dict):
         if content.get("type") == "image_url":
-            msg["content"] = [content]
+            img_copy = dict(content)
+            raw_iu = img_copy.get("image_url")
+            if isinstance(raw_iu, dict):
+                u = str(raw_iu.get("url") or "").replace("\x00", "")
+                img_copy["image_url"] = dict(raw_iu, url=u)
+            elif isinstance(raw_iu, str):
+                img_copy["image_url"] = raw_iu.replace("\x00", "")
+            msg["content"] = [img_copy]
         else:
             text_val = (
                 content.get("text")
@@ -363,7 +380,7 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
                 or content.get("content")
                 or json.dumps(content, ensure_ascii=False)
             )
-            val_str = str(text_val)
+            val_str = str(text_val).replace("\x00", "")
             if not val_str.strip():
                 msg["content"] = _default_empty_content(role, has_tool_calls)
             else:
@@ -371,7 +388,7 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
         return
 
     # 5. Fallback for primitives
-    primitive_str = str(content)
+    primitive_str = str(content).replace("\x00", "")
     if not primitive_str.strip():
         msg["content"] = _default_empty_content(role, has_tool_calls)
     else:
@@ -475,6 +492,22 @@ def upstream_payload(request: BaseModel, model_id: str | None = None) -> dict[st
                 _sanitize_message_content(msg)
                 _strip_response_only_fields(msg)
 
+    # Deterministic tool sorting for stable prompt caching prefix
+    tools = payload.get("tools")
+    if isinstance(tools, list):
+        def _tool_sort_key(t: Any) -> str:
+            if isinstance(t, dict):
+                fn = t.get("function")
+                if isinstance(fn, dict) and "name" in fn:
+                    return str(fn.get("name") or "")
+                return str(t.get("name") or t.get("id") or "")
+            return str(t)
+        payload["tools"] = sorted(tools, key=_tool_sort_key)
+
+    # Request streaming usage chunks by default so cache metrics and token usage are observed
+    if getattr(request, "stream", False) and "stream_options" not in payload:
+        payload["stream_options"] = {"include_usage": True}
+
     model = find_model(model_id) if model_id else None
     if model:
         _sanitize_parameters(payload, model)
@@ -503,6 +536,8 @@ async def chat_completions(
         response = await provider.chat(model.id, payload, credential.hkbu_api_key)
         data = response.json()
         if isinstance(data, dict):
+            if "usage" in data:
+                log_token_usage(model.id, data.get("usage"))
             if "choices" not in data or not data["choices"]:
                 data["choices"] = [{
                     "index": 0,

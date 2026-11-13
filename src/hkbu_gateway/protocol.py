@@ -20,6 +20,7 @@ class ChatCompletionRequest(BaseModel):
     top_p: float | None = None
     max_tokens: int | None = None
     stop: str | list[str] | None = None
+    stream_options: dict[str, Any] | None = None
 
 
 class EmbeddingRequest(BaseModel):

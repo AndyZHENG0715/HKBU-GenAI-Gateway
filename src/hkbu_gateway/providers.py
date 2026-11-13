@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -18,11 +19,64 @@ from .tools import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
+def log_token_usage(model: str, usage: dict[str, Any] | None) -> None:
+    """Log token usage and prompt cache hit rate if usage statistics are present."""
+    if not isinstance(usage, dict):
+        return
+    prompt_tokens = usage.get("prompt_tokens") or 0
+    completion_tokens = usage.get("completion_tokens") or 0
+    total_tokens = usage.get("total_tokens") or (prompt_tokens + completion_tokens)
+
+    # Check OpenAI/Azure prompt_tokens_details or DeepSeek cache_read_input_tokens
+    prompt_details = usage.get("prompt_tokens_details")
+    cached_tokens = 0
+    if isinstance(prompt_details, dict):
+        cached_tokens = prompt_details.get("cached_tokens") or 0
+    if not cached_tokens:
+        cached_tokens = usage.get("cache_read_input_tokens") or 0
+
+    hit_rate = (cached_tokens / prompt_tokens * 100) if prompt_tokens > 0 else 0.0
+    if cached_tokens > 0:
+        logger.info(
+            "Token Usage [%s]: prompt=%d, cached=%d (%.1f%% cache hit), completion=%d, total=%d",
+            model, prompt_tokens, cached_tokens, hit_rate, completion_tokens, total_tokens,
+        )
+    else:
+        logger.info(
+            "Token Usage [%s]: prompt=%d, completion=%d, total=%d",
+            model, prompt_tokens, completion_tokens, total_tokens,
+        )
+
+
 class UpstreamError(RuntimeError):
-    def __init__(self, status_code: int, detail: str):
-        super().__init__(detail)
+    def __init__(self, status_code: int, detail: str | bytes):
+        cleaned = clean_upstream_error_detail(status_code, detail)
+        super().__init__(cleaned)
         self.status_code = status_code
-        self.detail = detail
+        self.detail = cleaned
+
+
+def clean_upstream_error_detail(status_code: int, detail: str | bytes) -> str:
+    """Normalize HTML or raw error dumps from upstream gateways or firewalls into readable text."""
+    if isinstance(detail, bytes):
+        text = detail[:4000].decode("utf-8", errors="replace")
+    else:
+        text = str(detail)[:4000]
+
+    lower = text.lower()
+    if "<!doctype html" in lower or "<html" in lower:
+        if "access denied" in lower or status_code == 403:
+            return (
+                f"HKBU Campus Firewall / WAF blocked the request (HTTP {status_code} Access Denied). "
+                "The payload was intercepted by university security policy (often triggered by sensitive code patterns, scripts, SQL, or oversized file contents)."
+            )
+        if status_code in (502, 503, 504):
+            return f"HKBU upstream gateway returned an HTML error (HTTP {status_code} Gateway Error)."
+        return f"HKBU upstream returned an HTML error page (HTTP {status_code})."
+    return text[:2000]
 
 
 REASONING_TAG_PAIRS = [
@@ -226,7 +280,7 @@ class HKBUProvider:
             ) as response:
                 if response.is_error:
                     raw_bytes = await response.aread()
-                    error_detail = raw_bytes[:2000].decode("utf-8", errors="replace")
+                    error_detail = clean_upstream_error_detail(response.status_code, raw_bytes)
                     error_json = json.dumps({
                         "error": {
                             "message": f"HKBU Platform error ({response.status_code}): {error_detail}",
@@ -402,6 +456,9 @@ class HKBUProvider:
                             has_emitted_finish = True
                             yield b"data: [DONE]\n\n"
                             return
+
+                        if chunk_obj.get("usage"):
+                            log_token_usage(model, chunk_obj.get("usage"))
 
                         choices = chunk_obj.get("choices")
                         if choices and isinstance(choices, list) and len(choices) > 0:

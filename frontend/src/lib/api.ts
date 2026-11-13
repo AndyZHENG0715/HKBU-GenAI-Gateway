@@ -104,11 +104,23 @@ export interface ChatMessage {
   tool_calls?: ToolCallItem[];
 }
 
+export interface UsageInfo {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+  };
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
 export interface StreamChunk {
   content?: string;
   reasoning_content?: string;
   tool_calls?: ToolCallItem[];
   finish_reason?: string | null;
+  usage?: UsageInfo;
 }
 
 export interface StreamChatOptions {
@@ -140,6 +152,7 @@ export async function streamChatCompletion({
       model,
       messages,
       stream: true,
+      stream_options: { include_usage: true },
     };
     if (tools && tools.length > 0) {
       requestBody.tools = tools;
@@ -198,6 +211,12 @@ export async function streamChatCompletion({
               onError(new Error(errMsg));
               return;
             }
+            if (parsed.usage) {
+              onChunk({
+                usage: parsed.usage,
+              });
+            }
+
             const choice = parsed.choices?.[0];
             const delta = choice?.delta;
             const finishReason = choice?.finish_reason;

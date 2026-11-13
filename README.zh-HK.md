@@ -19,14 +19,16 @@
 - **🛡️ 面向 Coding Agent 的邊緣協議平抑器**：
   - 自動規整並清洗客戶端多輪對話中的複雜內容陣列（如 VS Code Copilot/Cline 的 `tool_result` 陣列），展平為字串或合規格式，避免上游 NestJS class-validator 400 校驗錯誤。
   - 自動清理 Agent 客戶端回傳到歷史中的回應專用欄位（`reasoning_content`、`tool_calls[].index`），避免 HKBU REST v1 回傳 400。
+  - 將上游校園網防火牆（WAF）攔截回傳的原始 HTML 403 頁面規整為清晰結構化報錯，並在標量與多模態訊息中深度剔除 `\x00` 空字節。
 - **🔍 通用模型探索與規格元數據**：
   - 提供 `/v1/models`、`/models`、`/v1/model`、`/model`、相容 OpenRouter 的 `/api/v1/models` 以及相容 LiteLLM 的 `/v1/model/info`。
   - 遵循 [models.dev](https://models.dev) 與騰訊工蜂（WorkBuddy）規格的模型能力完整元數據（`supportsToolCall`、`supportsReasoning`、`supportsVision`、`contextWindow`、`maxTokens`、`tool_call`、`reasoning`、`attachment`、`limit`、`capabilities`）。
 - **🤖 自主 Agentic Playground（客戶端混合運算）**：
   - 內建參考 Pi agent 與 OpenClaw（「小龍蝦」）極簡架構的自主智能體循環（Agent Loop），支援多步思考、串流工具調用與本地分派。
+  - **自癒重試與優雅軟著陸 (Self-Healing & Soft Landing)**：自動捕獲上游負載限制（413/上下文超限）、校園網 WAF 攔截（403 Access Denied）與網關臨時異常；動態剔除超大工具輸出並注入安全引導提示，指導 Agent 分頁讀取自癒，或優雅軟著陸給出可操作說明而非崩潰中斷。
   - **Railway 零伺服端算力負擔**：所有程式碼執行、資料科學與檔案讀寫均在使用者瀏覽器或本地電腦完成：
     - **瀏覽器 WebAssembly Python (Pyodide)**：在使用者瀏覽器中完整運行 CPython 3.12、NumPy、Pandas，產生的 Matplotlib 圖表直接渲染嵌入聊天對話氣泡！
-    - **本地專案資料夾掛載 (File System Access API)**：瀏覽器原生授權選取本地資料夾，Agent 可直接檢視、閱讀、編輯本地專案代碼，0 安裝。
+    - **本地專案資料夾掛載 (File System Access API)**：瀏覽器原生授權選取本地資料夾，Agent 可直接檢視、閱讀、編輯本地專案代碼，0 安裝。內建 25KB UTF-8 字節截斷保護、按行分頁（`offset` / `max_lines`）與二進位檔案過濾。
     - **三層容災網頁抓取 (3-Tier Web Fetch)**：整合伺服端代理（`/api/tools/web_fetch`）、本地助手與瀏覽器直連，徹底穿透跨域 CORS 阻斷。
     - **Tier 2 本地極客伴侶節點 (`companion/hkbu_genai_companion.py`)**：單一檔案零依賴伴侶腳本，解鎖全功能本地終端執行（Bash / Git）。
 - **💬 互動式 Web Playground**：
