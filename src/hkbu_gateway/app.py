@@ -272,6 +272,17 @@ def _default_empty_content(role: str, has_tool_calls: bool) -> str | None:
     return " "
 
 
+def _deep_strip_null(val: Any) -> Any:
+    """Recursively strip null bytes from strings, dicts, and lists."""
+    if isinstance(val, str):
+        return val.replace("\x00", "")
+    if isinstance(val, dict):
+        return {k: _deep_strip_null(v) for k, v in val.items()}
+    if isinstance(val, list):
+        return [_deep_strip_null(v) for v in val]
+    return val
+
+
 def _sanitize_message_content(msg: dict[str, Any]) -> None:
     """Ensure message content conforms to upstream HKBU requirements.
     Must be either a non-empty string, null (for assistant tool_calls), or an array of
@@ -316,25 +327,12 @@ def _sanitize_message_content(msg: dict[str, Any]) -> None:
                 elif isinstance(item, dict):
                     itype = item.get("type")
                     if itype == "image_url":
-                        img_copy = dict(item)
-                        raw_iu = img_copy.get("image_url")
-                        if isinstance(raw_iu, dict):
-                            u = str(raw_iu.get("url") or "").replace("\x00", "")
-                            img_copy["image_url"] = dict(raw_iu, url=u)
-                        elif isinstance(raw_iu, str):
-                            img_copy["image_url"] = raw_iu.replace("\x00", "")
-                        sanitized_parts.append(img_copy)
+                        sanitized_parts.append(_deep_strip_null(item))
                     elif itype == "text":
                         text_val = str(item.get("text") or item.get("value") or "").replace("\x00", "")
                         sanitized_parts.append({"type": "text", "text": text_val if text_val.strip() else " "})
                     else:
-                        text_val = str(
-                            item.get("text")
-                            or item.get("value")
-                            or item.get("content")
-                            or json.dumps(item, ensure_ascii=False)
-                        ).replace("\x00", "")
-                        sanitized_parts.append({"type": "text", "text": text_val if text_val.strip() else " "})
+                        sanitized_parts.append(_deep_strip_null(item))
                 else:
                     cleaned = str(item).replace("\x00", "")
                     sanitized_parts.append({"type": "text", "text": cleaned if cleaned.strip() else " "})

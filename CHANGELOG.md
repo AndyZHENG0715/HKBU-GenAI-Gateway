@@ -17,15 +17,15 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - Retries initial user turns on transient failures without duplicating requests, while avoiding retries on unmitigated oversized payloads.
   - Soft-lands gracefully with clear user-facing diagnostics instead of crashing or leaving the UI in an unhandled error state.
 - **Safe Bounded Local File Inspection (`frontend/src/lib/agent/tools/browserFs.ts`)**:
-  - Added line-based pagination (`offset`, `max_lines` default 300, clamped to 2000) and a strict 25 KB UTF-8 byte boundary limit using `TextEncoder`.
+  - Added line-based pagination (`offset`, `max_lines` default 300, clamped to 1000) and a strict 25 KB UTF-8 byte boundary limit using `TextEncoder`.
   - Line-boundary preservation: truncates only at full line boundaries with exact `nextOffset` pointers so the agent can read large source files chunk by chunk without getting blocked by upstream firewalls.
   - Rejects binary file formats (`.png`, `.jpg`, `.pdf`, `.db`, `.sqlite`, `.exe`, etc.) before loading raw bytes into the LLM context.
 
 ### Fixed
 - **Upstream HTML 403 / WAF Error Normalization (`src/hkbu_gateway/providers.py`)**:
-  - Added `clean_upstream_error_detail` to extract `<title>` and heading text from upstream campus firewall HTML error responses, replacing unparseable raw HTML with clean, actionable error messages.
+  - Added `clean_upstream_error_detail` to detect upstream campus firewall / WAF HTML block responses and normalize them into clear, structured error messages instead of leaking unparseable raw HTML markup.
 - **Deep Null-Byte Sanitization (`src/hkbu_gateway/app.py`)**:
-  - Sanitized null bytes (`\x00`) across all message payloads, including string contents, multimodal text parts, and nested `image_url.url` structures.
+  - Sanitized null bytes (`\x00`) recursively across all message payloads, including string contents, multimodal text parts, and all nested fields in `image_url` objects.
 
 ## [2.1.0] - 2026-10-20
 

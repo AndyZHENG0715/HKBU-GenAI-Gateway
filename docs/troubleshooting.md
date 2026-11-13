@@ -249,12 +249,12 @@ Web browsers strictly enforce the Same-Origin Policy (SOP). Directly calling `fe
 
 #### Gateway & Playground Mitigation
 1. **HTML 403 Normalization (`src/hkbu_gateway/providers.py`)**:
-   `clean_upstream_error_detail()` parses upstream HTML error pages, extracts `<title>` and heading elements, and transforms them into clean, structured diagnostics (`HKBU Platform error (403): Access Denied. The request was blocked by upstream firewall/WAF policies.`).
+   `clean_upstream_error_detail()` detects HTML error responses (including campus firewall WAF blocks and 50x gateway errors) and normalizes them into clean, structured diagnostics (`HKBU Platform error (403): Access Denied. The request was blocked by upstream firewall/WAF policies.`).
 2. **Deep Null-Byte Sanitization (`src/hkbu_gateway/app.py`)**:
-   `_sanitize_message_content()` strips null bytes (`\x00`) across all string contents, multimodal text parts, and nested `image_url.url` structures before dispatching upstream.
+   `_sanitize_message_content()` strips null bytes (`\x00`) recursively across all string contents, multimodal text parts, and nested fields in `image_url` objects before dispatching upstream.
 3. **Safe Bounded Local File Reading (`frontend/src/lib/agent/tools/browserFs.ts`)**:
    - `read_local_file` enforces a strict 25 KB UTF-8 byte boundary limit (via `TextEncoder`).
-   - Supports line-based pagination (`offset` and `max_lines`, default 300, clamped to 2000).
+   - Supports line-based pagination (`offset` and `max_lines`, default 300, clamped to 1000).
    - Preserves complete line boundaries and supplies `nextOffset` pointers so agents can read large source files chunk by chunk.
    - Automatically rejects binary file formats (`.png`, `.jpg`, `.pdf`, `.sqlite`, `.exe`, etc.) to prevent corrupting LLM context.
 4. **Resilient Agent Loop Self-Healing & Soft Landing (`frontend/src/lib/agent/loop.ts`)**:
