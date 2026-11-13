@@ -2,13 +2,13 @@
 
 Durable state summary and context handover for AI coding agents and developers.
 
-Last updated: **2026-11-12**. Read [the latest handoff](#6-latest-handoff-2026-10-20-hkbu-rest-v1-migration) before changing upstream routing, the model catalog, or request preprocessing.
+Last updated: **2026-11-13**. Read [the latest handoff](#7-latest-handoff-2026-11-13-v211-stabilization--cache-optimization-context) before changing upstream routing, the model catalog, or request preprocessing.
 
 ## 1. Project State
 
 - **Current Version**: `2.1.1` (HKBU WAF error normalization, bounded file inspection, and resilient agent self-healing), deployed to `https://byok.aitutor.ink`.
-- **Active Branch**: `main`. Merges to `main` auto-deploy to the production server (Alibaba Cloud ECS); there is no CI.
-- **Test Status**: 122 passing in the latest full run (`PYTHONPATH=src pytest`); 0 failures.
+- **Active Branch**: `claude/project-thread-vcaexs` (PR #4). Merges to `main` auto-deploy to the production server (Alibaba Cloud ECS); there is no CI.
+- **Test Status**: 126 passing in the latest full run (`PYTHONPATH=src pytest`); 0 failures.
 - **Frontend Status**: Built cleanly with Vite (`npm run build` targeting `static/index.html` and `static/hkbuapi4agent.html`).
 - **Local Services**:
   - Gateway runs on `http://127.0.0.1:8000` (FastAPI).
@@ -123,3 +123,36 @@ Around 2026-10-09, HKBU replaced the per-provider v0 deployment routes with a pr
 
 ### History
 Earlier incident handoffs (2026-09-30 Qwen history loss, 2026-10-02 DeepSeek amnesia and web fetch CORS) described v0 workarounds that no longer apply; see the git history of this file and `docs/qwen-live-verification.md`.
+
+---
+
+## 7. Latest Handoff (2026-11-13): v2.1.1 Stabilization & Cache Optimization Context
+
+### What was completed in v2.1.1
+1. **Upstream WAF / HTML 403 Error Normalization**:
+   - `clean_upstream_error_detail` in `src/hkbu_gateway/providers.py` intercepts raw HTML 403 Access Denied / campus firewall pages and converts them into structured diagnostics.
+   - Recursive null byte (`\x00`) sanitization via `_deep_strip_null` in `src/hkbu_gateway/app.py` across text, dict, and multimodal fields (e.g. `image_url.url`, `detail`).
+2. **Safe Bounded Local File Reading**:
+   - `read_local_file` in `frontend/src/lib/agent/tools/browserFs.ts` enforces a 25 KB UTF-8 boundary limit (using `TextEncoder`), line-based pagination (`offset`, `max_lines` default 300, clamped to 1000), complete line preservation, and binary extension guards.
+3. **Resilient Agent Loop Self-Healing & Soft Landing**:
+   - `runAgentLoop` in `frontend/src/lib/agent/loop.ts` classifies errors into allow-listed categories (`payload_size_or_context_limit`, `security_policy_or_waf_rejection`, `transient_service_unavailable`).
+   - Automatically redacts only the implicated oversized tool output, injects actionable pagination recovery guidance, retries initial turns on transient errors, and soft-lands gracefully on failure without UI crashes.
+4. **Test & Documentation Verification**:
+   - 126 backend tests passing (`tests/test_review_regressions.py`).
+   - All 5 version cascade files and documentation (`CHANGELOG.md`, `README.*`, `troubleshooting.md`, `architecture.md`) updated.
+
+### Context & Goals for Next Mission: Cache Hit Rate Optimization (缓存命中率优化)
+When optimizing cache hit rates (Prompt Caching / KV-Cache Reuse) in HKBU GenAI Gateway, the incoming agent should focus on the following dimensions:
+
+1. **Upstream Prompt Caching Architecture**:
+   - Modern upstream providers (Azure OpenAI, DeepSeek, Alibaba Qwen, Moonshot/Kimi) utilize automatic prefix-based KV caching (typically requiring prefix >= 1024 tokens).
+   - **Prefix Invariance Rule**: Upstream KV caches match strictly from the first token forward. Any non-deterministic variation in early messages (such as fluctuating system prompts, volatile timestamps, or dynamic tool ordering) invalidates the entire cache for all subsequent messages.
+2. **Gateway-Level Prefix Stabilization**:
+   - **Static Message Ordering**: Keep system messages strictly static and identical at index 0. Ensure no dynamic context (e.g., live timestamps, variable diagnostic text) is prepended to the system message unless deliberately intended to invalidate.
+   - **Deterministic Tool Schema Serialization**: Ensure `tools` array ordering and schema serialization (JSON key ordering) remain identical across turns.
+   - **History Normalization Stability**: Verify that `_sanitize_message_content` and `_strip_response_only_fields` do not introduce jitter or mutate history between turn $N$ and turn $N+1$.
+3. **Token Usage & Cache Metrics Passthrough**:
+   - Inspect whether HKBU REST v1 upstream forwards cache metrics in `usage` (e.g., `prompt_tokens_details.cached_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`).
+   - Ensure the gateway preserves and reports `cached_tokens` in both non-streaming completions and streaming chunk payloads so clients (and the web playground) can measure cache hit rate in real time.
+4. **Optional Gateway Response Cache (Exact / Semantic)**:
+   - Investigate lightweight local SQLite / in-memory exact-match caching for deterministic queries (`temperature: 0`, identical model + tools + message hash) to deliver 0ms responses without consuming university token quotas.
